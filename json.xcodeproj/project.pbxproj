@@ -185,11 +185,11 @@
 				"$(SRCROOT)/src/json.hpp.re2c",
 			);
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/json.h",
+				"$(SRCROOT)/src/json.hpp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "RE2C=/usr/local/bin/re2c\nSED=/usr/local/bin/sed\n\n#$RE2C -f -b -s -i --no-generation-date $SCRIPT_INPUT_FILE_0 | $SED '1d' > $DERIVED_FILE_DIR/json.h\n$RE2C -b -s -i --no-generation-date $SCRIPT_INPUT_FILE_0 | $SED '1d' > $SCRIPT_OUTPUT_FILE_0\n\nexit $?";
+			shellScript = "RE2C=/usr/local/bin/re2c\nSED=/usr/local/bin/sed\n\n$RE2C -b -s -i --no-generation-date $SCRIPT_INPUT_FILE_0 | $SED '1d' > $SCRIPT_OUTPUT_FILE_0\n\nexit $?";
 		};
 /* End PBXShellScriptBuildPhase section */
 
