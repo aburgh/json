@@ -10,9 +10,6 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 
-#include "json.hpp"
-using nlohmann::json;
-
 #include <array>
 #include <deque>
 #include <forward_list>
@@ -24,6 +21,10 @@ using nlohmann::json;
 #include <unordered_set>
 #include <vector>
 
+#define private public
+#include "json.hpp"
+using nlohmann::json;
+
 TEST_CASE("constructors")
 {
     SECTION("create an empty value with a given type")
@@ -31,6 +32,13 @@ TEST_CASE("constructors")
         SECTION("null")
         {
             auto t = json::value_t::null;
+            json j(t);
+            CHECK(j.type() == t);
+        }
+
+        SECTION("discarded")
+        {
+            auto t = json::value_t::discarded;
             json j(t);
             CHECK(j.type() == t);
         }
@@ -902,6 +910,268 @@ TEST_CASE("constructors")
             }
         }
     }
+
+    SECTION("create an array of n copies of a given value")
+    {
+        json v = {1, "foo", 34.23, {1, 2, 3}, {{"A", 1}, {"B", 2}}};
+        json arr(3, v);
+        CHECK(arr.size() == 3);
+        for (auto& x : arr)
+        {
+            CHECK(x == v);
+        }
+    }
+
+    SECTION("create a JSON container from an iterator range")
+    {
+        SECTION("object")
+        {
+            SECTION("json(begin(), end())")
+            {
+                {
+                    json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                    json j_new(jobject.begin(), jobject.end());
+                    CHECK(j_new == jobject);
+                }
+                {
+                    json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                    json j_new(jobject.cbegin(), jobject.cend());
+                    CHECK(j_new == jobject);
+                }
+            }
+
+            SECTION("json(begin(), begin())")
+            {
+                {
+                    json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                    json j_new(jobject.begin(), jobject.begin());
+                    CHECK(j_new == json::object());
+                }
+                {
+                    json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                    json j_new(jobject.cbegin(), jobject.cbegin());
+                    CHECK(j_new == json::object());
+                }
+            }
+
+            SECTION("construct from subrange")
+            {
+                json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}, {"d", false}, {"e", true}};
+                json j_new(jobject.find("b"), jobject.find("e"));
+                CHECK(j_new == json({{"b", 1}, {"c", 17}, {"d", false}}));
+            }
+
+            SECTION("incompatible iterators")
+            {
+                {
+                    json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}, {"d", false}, {"e", true}};
+                    json jobject2 = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                    CHECK_THROWS_AS(json(jobject.begin(), jobject2.end()), std::runtime_error);
+                    CHECK_THROWS_AS(json(jobject2.begin(), jobject.end()), std::runtime_error);
+                }
+                {
+                    json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}, {"d", false}, {"e", true}};
+                    json jobject2 = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                    CHECK_THROWS_AS(json(jobject.cbegin(), jobject2.cend()), std::runtime_error);
+                    CHECK_THROWS_AS(json(jobject2.cbegin(), jobject.cend()), std::runtime_error);
+                }
+            }
+        }
+
+        SECTION("array")
+        {
+            SECTION("json(begin(), end())")
+            {
+                {
+                    json jarray = {1, 2, 3, 4, 5};
+                    json j_new(jarray.begin(), jarray.end());
+                    CHECK(j_new == jarray);
+                }
+                {
+                    json jarray = {1, 2, 3, 4, 5};
+                    json j_new(jarray.cbegin(), jarray.cend());
+                    CHECK(j_new == jarray);
+                }
+            }
+
+            SECTION("json(begin(), begin())")
+            {
+                {
+                    json jarray = {1, 2, 3, 4, 5};
+                    json j_new(jarray.begin(), jarray.begin());
+                    CHECK(j_new == json::array());
+                }
+                {
+                    json jarray = {1, 2, 3, 4, 5};
+                    json j_new(jarray.cbegin(), jarray.cbegin());
+                    CHECK(j_new == json::array());
+                }
+            }
+
+            SECTION("construct from subrange")
+            {
+                {
+                    json jarray = {1, 2, 3, 4, 5};
+                    json j_new(jarray.begin() + 1, jarray.begin() + 3);
+                    CHECK(j_new == json({2, 3}));
+                }
+                {
+                    json jarray = {1, 2, 3, 4, 5};
+                    json j_new(jarray.cbegin() + 1, jarray.cbegin() + 3);
+                    CHECK(j_new == json({2, 3}));
+                }
+            }
+
+            SECTION("incompatible iterators")
+            {
+                {
+                    json jarray = {1, 2, 3, 4};
+                    json jarray2 = {2, 3, 4, 5};
+                    CHECK_THROWS_AS(json(jarray.begin(), jarray2.end()), std::runtime_error);
+                    CHECK_THROWS_AS(json(jarray2.begin(), jarray.end()), std::runtime_error);
+                }
+                {
+                    json jarray = {1, 2, 3, 4};
+                    json jarray2 = {2, 3, 4, 5};
+                    CHECK_THROWS_AS(json(jarray.cbegin(), jarray2.cend()), std::runtime_error);
+                    CHECK_THROWS_AS(json(jarray2.cbegin(), jarray.cend()), std::runtime_error);
+                }
+            }
+        }
+
+        SECTION("other values")
+        {
+            SECTION("construct with two valid iterators")
+            {
+                SECTION("null")
+                {
+                    {
+                        json j;
+                        CHECK_THROWS_AS(json(j.begin(), j.end()), std::runtime_error);
+                    }
+                    {
+                        json j;
+                        CHECK_THROWS_AS(json(j.cbegin(), j.cend()), std::runtime_error);
+                    }
+                }
+
+                SECTION("string")
+                {
+                    {
+                        json j = "foo";
+                        json j_new(j.begin(), j.end());
+                        CHECK(j == j_new);
+                    }
+                    {
+                        json j = "bar";
+                        json j_new(j.cbegin(), j.cend());
+                        CHECK(j == j_new);
+                    }
+                }
+
+                SECTION("number (boolean)")
+                {
+                    {
+                        json j = false;
+                        json j_new(j.begin(), j.end());
+                        CHECK(j == j_new);
+                    }
+                    {
+                        json j = true;
+                        json j_new(j.cbegin(), j.cend());
+                        CHECK(j == j_new);
+                    }
+                }
+
+                SECTION("number (integer)")
+                {
+                    {
+                        json j = 17;
+                        json j_new(j.begin(), j.end());
+                        CHECK(j == j_new);
+                    }
+                    {
+                        json j = 17;
+                        json j_new(j.cbegin(), j.cend());
+                        CHECK(j == j_new);
+                    }
+                }
+
+                SECTION("number (floating point)")
+                {
+                    {
+                        json j = 23.42;
+                        json j_new(j.begin(), j.end());
+                        CHECK(j == j_new);
+                    }
+                    {
+                        json j = 23.42;
+                        json j_new(j.cbegin(), j.cend());
+                        CHECK(j == j_new);
+                    }
+                }
+            }
+
+            SECTION("construct with two invalid iterators")
+            {
+                SECTION("string")
+                {
+                    {
+                        json j = "foo";
+                        CHECK_THROWS_AS(json(j.end(), j.end()), std::out_of_range);
+                        CHECK_THROWS_AS(json(j.begin(), j.begin()), std::out_of_range);
+                    }
+                    {
+                        json j = "bar";
+                        CHECK_THROWS_AS(json(j.cend(), j.cend()), std::out_of_range);
+                        CHECK_THROWS_AS(json(j.cbegin(), j.cbegin()), std::out_of_range);
+                    }
+                }
+
+                SECTION("number (boolean)")
+                {
+                    {
+                        json j = false;
+                        CHECK_THROWS_AS(json(j.end(), j.end()), std::out_of_range);
+                        CHECK_THROWS_AS(json(j.begin(), j.begin()), std::out_of_range);
+                    }
+                    {
+                        json j = true;
+                        CHECK_THROWS_AS(json(j.cend(), j.cend()), std::out_of_range);
+                        CHECK_THROWS_AS(json(j.cbegin(), j.cbegin()), std::out_of_range);
+                    }
+                }
+
+                SECTION("number (integer)")
+                {
+                    {
+                        json j = 17;
+                        CHECK_THROWS_AS(json(j.end(), j.end()), std::out_of_range);
+                        CHECK_THROWS_AS(json(j.begin(), j.begin()), std::out_of_range);
+                    }
+                    {
+                        json j = 17;
+                        CHECK_THROWS_AS(json(j.cend(), j.cend()), std::out_of_range);
+                        CHECK_THROWS_AS(json(j.cbegin(), j.cbegin()), std::out_of_range);
+                    }
+                }
+
+                SECTION("number (floating point)")
+                {
+                    {
+                        json j = 23.42;
+                        CHECK_THROWS_AS(json(j.end(), j.end()), std::out_of_range);
+                        CHECK_THROWS_AS(json(j.begin(), j.begin()), std::out_of_range);
+                    }
+                    {
+                        json j = 23.42;
+                        CHECK_THROWS_AS(json(j.cend(), j.cend()), std::out_of_range);
+                        CHECK_THROWS_AS(json(j.cbegin(), j.cbegin()), std::out_of_range);
+                    }
+                }
+            }
+        }
+    }
 }
 
 TEST_CASE("other constructors and destructor")
@@ -1061,6 +1331,7 @@ TEST_CASE("object inspection")
             CHECK(j.is_object());
             CHECK(not j.is_array());
             CHECK(not j.is_string());
+            CHECK(not j.is_discarded());
         }
 
         SECTION("array")
@@ -1072,6 +1343,7 @@ TEST_CASE("object inspection")
             CHECK(not j.is_object());
             CHECK(j.is_array());
             CHECK(not j.is_string());
+            CHECK(not j.is_discarded());
         }
 
         SECTION("null")
@@ -1083,6 +1355,7 @@ TEST_CASE("object inspection")
             CHECK(not j.is_object());
             CHECK(not j.is_array());
             CHECK(not j.is_string());
+            CHECK(not j.is_discarded());
         }
 
         SECTION("boolean")
@@ -1094,6 +1367,7 @@ TEST_CASE("object inspection")
             CHECK(not j.is_object());
             CHECK(not j.is_array());
             CHECK(not j.is_string());
+            CHECK(not j.is_discarded());
         }
 
         SECTION("string")
@@ -1105,6 +1379,7 @@ TEST_CASE("object inspection")
             CHECK(not j.is_object());
             CHECK(not j.is_array());
             CHECK(j.is_string());
+            CHECK(not j.is_discarded());
         }
 
         SECTION("number (integer)")
@@ -1116,6 +1391,7 @@ TEST_CASE("object inspection")
             CHECK(not j.is_object());
             CHECK(not j.is_array());
             CHECK(not j.is_string());
+            CHECK(not j.is_discarded());
         }
 
         SECTION("number (floating-point)")
@@ -1127,6 +1403,19 @@ TEST_CASE("object inspection")
             CHECK(not j.is_object());
             CHECK(not j.is_array());
             CHECK(not j.is_string());
+            CHECK(not j.is_discarded());
+        }
+
+        SECTION("discarded")
+        {
+            json j(json::value_t::discarded);
+            CHECK(not j.is_null());
+            CHECK(not j.is_boolean());
+            CHECK(not j.is_number());
+            CHECK(not j.is_object());
+            CHECK(not j.is_array());
+            CHECK(not j.is_string());
+            CHECK(j.is_discarded());
         }
     }
 
@@ -1160,11 +1449,23 @@ TEST_CASE("object inspection")
             CHECK(s.find("42.23") != std::string::npos);
         }
 
+        SECTION("dump and small floating-point numbers")
+        {
+            auto s = json(1.23456e-78).dump();
+            CHECK(s.find("1.23456e-78") != std::string::npos);
+        }
+
         SECTION("dump and non-ASCII characters")
         {
             CHECK(json("ä").dump() == "\"ä\"");
             CHECK(json("Ö").dump() == "\"Ö\"");
             CHECK(json("❤️").dump() == "\"❤️\"");
+        }
+
+        SECTION("serialization of discarded element")
+        {
+            json j_discarded(json::value_t::discarded);
+            CHECK(j_discarded.dump() == "<discarded>");
         }
     }
 
@@ -2000,6 +2301,121 @@ TEST_CASE("value conversion")
             CHECK(json(n).m_value.number_float == Approx(j.m_value.number_float));
         }
     }
+
+    SECTION("more involved conversions")
+    {
+        SECTION("object-like STL containers")
+        {
+            json j1 = {{"one", 1}, {"two", 2}, {"three", 3}};
+            json j2 = {{"one", 1.1}, {"two", 2.2}, {"three", 3.3}};
+            json j3 = {{"one", true}, {"two", false}, {"three", true}};
+            json j4 = {{"one", "eins"}, {"two", "zwei"}, {"three", "drei"}};
+
+            SECTION("std::map")
+            {
+                auto m1 = j1.get<std::map<std::string, int>>();
+                auto m2 = j2.get<std::map<std::string, double>>();
+                auto m3 = j3.get<std::map<std::string, bool>>();
+                //auto m4 = j4.get<std::map<std::string, std::string>>();
+            }
+
+            SECTION("std::unordered_map")
+            {
+                auto m1 = j1.get<std::unordered_map<std::string, int>>();
+                auto m2 = j2.get<std::unordered_map<std::string, double>>();
+                auto m3 = j3.get<std::unordered_map<std::string, bool>>();
+                //auto m4 = j4.get<std::unordered_map<std::string, std::string>>();
+                //CHECK(m4["one"] == "eins");
+            }
+
+            SECTION("std::multimap")
+            {
+                auto m1 = j1.get<std::multimap<std::string, int>>();
+                auto m2 = j2.get<std::multimap<std::string, double>>();
+                auto m3 = j3.get<std::multimap<std::string, bool>>();
+                //auto m4 = j4.get<std::multimap<std::string, std::string>>();
+                //CHECK(m4["one"] == "eins");
+            }
+
+            SECTION("std::unordered_multimap")
+            {
+                auto m1 = j1.get<std::unordered_multimap<std::string, int>>();
+                auto m2 = j2.get<std::unordered_multimap<std::string, double>>();
+                auto m3 = j3.get<std::unordered_multimap<std::string, bool>>();
+                //auto m4 = j4.get<std::unordered_multimap<std::string, std::string>>();
+                //CHECK(m4["one"] == "eins");
+            }
+
+            SECTION("exception in case of a non-object type")
+            {
+                CHECK_THROWS_AS((json().get<std::map<std::string, int>>()), std::logic_error);
+            }
+        }
+
+        SECTION("array-like STL containers")
+        {
+            json j1 = {1, 2, 3, 4};
+            json j2 = {1.2, 2.3, 3.4, 4.5};
+            json j3 = {true, false, true};
+            json j4 = {"one", "two", "three"};
+
+            SECTION("std::list")
+            {
+                auto m1 = j1.get<std::list<int>>();
+                auto m2 = j2.get<std::list<double>>();
+                auto m3 = j3.get<std::list<bool>>();
+                auto m4 = j4.get<std::list<std::string>>();
+            }
+
+            //SECTION("std::forward_list")
+            //{
+            //    auto m1 = j1.get<std::forward_list<int>>();
+            //    auto m2 = j2.get<std::forward_list<double>>();
+            //    auto m3 = j3.get<std::forward_list<bool>>();
+            //    auto m4 = j4.get<std::forward_list<std::string>>();
+            //}
+
+            SECTION("std::vector")
+            {
+                auto m1 = j1.get<std::vector<int>>();
+                auto m2 = j2.get<std::vector<double>>();
+                auto m3 = j3.get<std::vector<bool>>();
+                auto m4 = j4.get<std::vector<std::string>>();
+            }
+
+            SECTION("std::deque")
+            {
+                auto m1 = j1.get<std::deque<int>>();
+                auto m2 = j2.get<std::deque<double>>();
+                auto m3 = j3.get<std::deque<bool>>();
+                auto m4 = j4.get<std::deque<std::string>>();
+            }
+
+            SECTION("std::set")
+            {
+                auto m1 = j1.get<std::set<int>>();
+                auto m2 = j2.get<std::set<double>>();
+                auto m3 = j3.get<std::set<bool>>();
+                auto m4 = j4.get<std::set<std::string>>();
+            }
+
+            SECTION("std::unordered_set")
+            {
+                auto m1 = j1.get<std::unordered_set<int>>();
+                auto m2 = j2.get<std::unordered_set<double>>();
+                auto m3 = j3.get<std::unordered_set<bool>>();
+                auto m4 = j4.get<std::unordered_set<std::string>>();
+            }
+
+            SECTION("exception in case of a non-object type")
+            {
+                CHECK_THROWS_AS((json().get<std::list<int>>()), std::logic_error);
+                CHECK_THROWS_AS((json().get<std::vector<int>>()), std::logic_error);
+                CHECK_THROWS_AS((json().get<std::vector<json>>()), std::logic_error);
+                CHECK_THROWS_AS((json().get<std::list<json>>()), std::logic_error);
+            }
+        }
+    }
 }
 
 TEST_CASE("element access")
@@ -2088,6 +2504,14 @@ TEST_CASE("element access")
             }
         }
 
+        SECTION("front and back")
+        {
+            CHECK(j.front() == json(1));
+            CHECK(j_const.front() == json(1));
+            CHECK(j.back() == json({1, 2, 3}));
+            CHECK(j_const.back() == json({1, 2, 3}));
+        }
+
         SECTION("access specified element")
         {
             SECTION("access within bounds")
@@ -2167,6 +2591,196 @@ TEST_CASE("element access")
                     const json j_nonarray_const(j_nonarray);
                     CHECK_THROWS_AS(j_nonarray[0], std::runtime_error);
                     CHECK_THROWS_AS(j_nonarray_const[0], std::runtime_error);
+                }
+            }
+        }
+
+        SECTION("remove specified element")
+        {
+            SECTION("remove element by index")
+            {
+                {
+                    json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                    jarray.erase(0);
+                    CHECK(jarray == json({true, nullptr, "string", 42.23, json::object(), {1, 2, 3}}));
+                }
+                {
+                    json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                    jarray.erase(1);
+                    CHECK(jarray == json({1, nullptr, "string", 42.23, json::object(), {1, 2, 3}}));
+                }
+                {
+                    json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                    jarray.erase(2);
+                    CHECK(jarray == json({1, true, "string", 42.23, json::object(), {1, 2, 3}}));
+                }
+                {
+                    json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                    jarray.erase(3);
+                    CHECK(jarray == json({1, true, nullptr, 42.23, json::object(), {1, 2, 3}}));
+                }
+                {
+                    json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                    jarray.erase(4);
+                    CHECK(jarray == json({1, true, nullptr, "string", json::object(), {1, 2, 3}}));
+                }
+                {
+                    json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                    jarray.erase(5);
+                    CHECK(jarray == json({1, true, nullptr, "string", 42.23, {1, 2, 3}}));
+                }
+                {
+                    json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                    jarray.erase(6);
+                    CHECK(jarray == json({1, true, nullptr, "string", 42.23, json::object()}));
+                }
+                {
+                    json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                    CHECK_THROWS_AS(jarray.erase(7), std::out_of_range);
+                }
+            }
+
+            SECTION("remove element by iterator")
+            {
+                SECTION("erase(begin())")
+                {
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::iterator it2 = jarray.erase(jarray.begin());
+                        CHECK(jarray == json({true, nullptr, "string", 42.23, json::object(), {1, 2, 3}}));
+                        CHECK(*it2 == json(true));
+                    }
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::const_iterator it2 = jarray.erase(jarray.cbegin());
+                        CHECK(jarray == json({true, nullptr, "string", 42.23, json::object(), {1, 2, 3}}));
+                        CHECK(*it2 == json(true));
+                    }
+                }
+
+                SECTION("erase(begin(), end())")
+                {
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::iterator it2 = jarray.erase(jarray.begin(), jarray.end());
+                        CHECK(jarray == json::array());
+                        CHECK(it2 == jarray.end());
+                    }
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::const_iterator it2 = jarray.erase(jarray.cbegin(), jarray.cend());
+                        CHECK(jarray == json::array());
+                        CHECK(it2 == jarray.cend());
+                    }
+                }
+
+                SECTION("erase(begin(), begin())")
+                {
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::iterator it2 = jarray.erase(jarray.begin(), jarray.begin());
+                        CHECK(jarray == json({1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}}));
+                        CHECK(*it2 == json(1));
+                    }
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::const_iterator it2 = jarray.erase(jarray.cbegin(), jarray.cbegin());
+                        CHECK(jarray == json({1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}}));
+                        CHECK(*it2 == json(1));
+                    }
+                }
+
+                SECTION("erase at offset")
+                {
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::iterator it = jarray.begin() + 3;
+                        json::iterator it2 = jarray.erase(it);
+                        CHECK(jarray == json({1, true, nullptr, 42.23, json::object(), {1, 2, 3}}));
+                        CHECK(*it2 == json(42.23));
+                    }
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::const_iterator it = jarray.cbegin() + 3;
+                        json::const_iterator it2 = jarray.erase(it);
+                        CHECK(jarray == json({1, true, nullptr, 42.23, json::object(), {1, 2, 3}}));
+                        CHECK(*it2 == json(42.23));
+                    }
+                }
+
+                SECTION("erase subrange")
+                {
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::iterator it2 = jarray.erase(jarray.begin() + 2, jarray.begin() + 5);
+                        CHECK(jarray == json({1, true, json::object(), {1, 2, 3}}));
+                        CHECK(*it2 == json::object());
+                    }
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json::const_iterator it2 = jarray.erase(jarray.cbegin() + 2, jarray.cbegin() + 5);
+                        CHECK(jarray == json({1, true, json::object(), {1, 2, 3}}));
+                        CHECK(*it2 == json::object());
+                    }
+                }
+
+                SECTION("different arrays")
+                {
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json jarray2 = {"foo", "bar"};
+                        CHECK_THROWS_AS(jarray.erase(jarray2.begin()), std::runtime_error);
+                        CHECK_THROWS_AS(jarray.erase(jarray.begin(), jarray2.end()), std::runtime_error);
+                        CHECK_THROWS_AS(jarray.erase(jarray2.begin(), jarray.end()), std::runtime_error);
+                        CHECK_THROWS_AS(jarray.erase(jarray2.begin(), jarray2.end()), std::runtime_error);
+                    }
+                    {
+                        json jarray = {1, true, nullptr, "string", 42.23, json::object(), {1, 2, 3}};
+                        json jarray2 = {"foo", "bar"};
+                        CHECK_THROWS_AS(jarray.erase(jarray2.cbegin()), std::runtime_error);
+                        CHECK_THROWS_AS(jarray.erase(jarray.cbegin(), jarray2.cend()), std::runtime_error);
+                        CHECK_THROWS_AS(jarray.erase(jarray2.cbegin(), jarray.cend()), std::runtime_error);
+                        CHECK_THROWS_AS(jarray.erase(jarray2.cbegin(), jarray2.cend()), std::runtime_error);
+                    }
+                }
+            }
+
+            SECTION("remove element by index in non-array type")
+            {
+                SECTION("null")
+                {
+                    json j_nonobject(json::value_t::null);
+                    CHECK_THROWS_AS(j_nonobject.erase(0), std::runtime_error);
+                }
+
+                SECTION("boolean")
+                {
+                    json j_nonobject(json::value_t::boolean);
+                    CHECK_THROWS_AS(j_nonobject.erase(0), std::runtime_error);
+                }
+
+                SECTION("string")
+                {
+                    json j_nonobject(json::value_t::string);
+                    CHECK_THROWS_AS(j_nonobject.erase(0), std::runtime_error);
+                }
+
+                SECTION("object")
+                {
+                    json j_nonobject(json::value_t::object);
+                    CHECK_THROWS_AS(j_nonobject.erase(0), std::runtime_error);
+                }
+
+                SECTION("number (integer)")
+                {
+                    json j_nonobject(json::value_t::number_integer);
+                    CHECK_THROWS_AS(j_nonobject.erase(0), std::runtime_error);
+                }
+
+                SECTION("number (floating-point)")
+                {
+                    json j_nonobject(json::value_t::number_float);
+                    CHECK_THROWS_AS(j_nonobject.erase(0), std::runtime_error);
                 }
             }
         }
@@ -2254,6 +2868,16 @@ TEST_CASE("element access")
                     CHECK_THROWS_AS(j_nonobject_const.at("foo"), std::runtime_error);
                 }
             }
+        }
+
+        SECTION("front and back")
+        {
+            // "array" is the smallest key
+            CHECK(j.front() == json({1, 2, 3}));
+            CHECK(j_const.front() == json({1, 2, 3}));
+            // "string" is the largest key
+            CHECK(j.back() == json("hello world"));
+            CHECK(j_const.back() == json("hello world"));
         }
 
         SECTION("access specified element")
@@ -2361,6 +2985,191 @@ TEST_CASE("element access")
             }
         }
 
+        SECTION("remove specified element")
+        {
+            SECTION("remove element by key")
+            {
+                CHECK(j.find("integer") != j.end());
+                CHECK(j.erase("integer") == 1);
+                CHECK(j.find("integer") == j.end());
+                CHECK(j.erase("integer") == 0);
+
+                CHECK(j.find("boolean") != j.end());
+                CHECK(j.erase("boolean") == 1);
+                CHECK(j.find("boolean") == j.end());
+                CHECK(j.erase("boolean") == 0);
+
+                CHECK(j.find("null") != j.end());
+                CHECK(j.erase("null") == 1);
+                CHECK(j.find("null") == j.end());
+                CHECK(j.erase("null") == 0);
+
+                CHECK(j.find("string") != j.end());
+                CHECK(j.erase("string") == 1);
+                CHECK(j.find("string") == j.end());
+                CHECK(j.erase("string") == 0);
+
+                CHECK(j.find("floating") != j.end());
+                CHECK(j.erase("floating") == 1);
+                CHECK(j.find("floating") == j.end());
+                CHECK(j.erase("floating") == 0);
+
+                CHECK(j.find("object") != j.end());
+                CHECK(j.erase("object") == 1);
+                CHECK(j.find("object") == j.end());
+                CHECK(j.erase("object") == 0);
+
+                CHECK(j.find("array") != j.end());
+                CHECK(j.erase("array") == 1);
+                CHECK(j.find("array") == j.end());
+                CHECK(j.erase("array") == 0);
+            }
+
+            SECTION("remove element by iterator")
+            {
+                SECTION("erase(begin())")
+                {
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        json::iterator it2 = jobject.erase(jobject.begin());
+                        CHECK(jobject == json({{"b", 1}, {"c", 17}}));
+                        CHECK(*it2 == json(1));
+                    }
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        json::const_iterator it2 = jobject.erase(jobject.cbegin());
+                        CHECK(jobject == json({{"b", 1}, {"c", 17}}));
+                        CHECK(*it2 == json(1));
+                    }
+                }
+
+                SECTION("erase(begin(), end())")
+                {
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        json::iterator it2 = jobject.erase(jobject.begin(), jobject.end());
+                        CHECK(jobject == json::object());
+                        CHECK(it2 == jobject.end());
+                    }
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        json::const_iterator it2 = jobject.erase(jobject.cbegin(), jobject.cend());
+                        CHECK(jobject == json::object());
+                        CHECK(it2 == jobject.cend());
+                    }
+                }
+
+                SECTION("erase(begin(), begin())")
+                {
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        json::iterator it2 = jobject.erase(jobject.begin(), jobject.begin());
+                        CHECK(jobject == json({{"a", "a"}, {"b", 1}, {"c", 17}}));
+                        CHECK(*it2 == json("a"));
+                    }
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        json::const_iterator it2 = jobject.erase(jobject.cbegin(), jobject.cbegin());
+                        CHECK(jobject == json({{"a", "a"}, {"b", 1}, {"c", 17}}));
+                        CHECK(*it2 == json("a"));
+                    }
+                }
+
+                SECTION("erase at offset")
+                {
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        json::iterator it = jobject.find("b");
+                        json::iterator it2 = jobject.erase(it);
+                        CHECK(jobject == json({{"a", "a"}, {"c", 17}}));
+                        CHECK(*it2 == json(17));
+                    }
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        json::const_iterator it = jobject.find("b");
+                        json::const_iterator it2 = jobject.erase(it);
+                        CHECK(jobject == json({{"a", "a"}, {"c", 17}}));
+                        CHECK(*it2 == json(17));
+                    }
+                }
+
+                SECTION("erase subrange")
+                {
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}, {"d", false}, {"e", true}};
+                        json::iterator it2 = jobject.erase(jobject.find("b"), jobject.find("e"));
+                        CHECK(jobject == json({{"a", "a"}, {"e", true}}));
+                        CHECK(*it2 == json(true));
+                    }
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}, {"d", false}, {"e", true}};
+                        json::const_iterator it2 = jobject.erase(jobject.find("b"), jobject.find("e"));
+                        CHECK(jobject == json({{"a", "a"}, {"e", true}}));
+                        CHECK(*it2 == json(true));
+                    }
+                }
+
+                SECTION("different objects")
+                {
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}, {"d", false}, {"e", true}};
+                        json jobject2 = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        CHECK_THROWS_AS(jobject.erase(jobject2.begin()), std::runtime_error);
+                        CHECK_THROWS_AS(jobject.erase(jobject.begin(), jobject2.end()), std::runtime_error);
+                        CHECK_THROWS_AS(jobject.erase(jobject2.begin(), jobject.end()), std::runtime_error);
+                        CHECK_THROWS_AS(jobject.erase(jobject2.begin(), jobject2.end()), std::runtime_error);
+                    }
+                    {
+                        json jobject = {{"a", "a"}, {"b", 1}, {"c", 17}, {"d", false}, {"e", true}};
+                        json jobject2 = {{"a", "a"}, {"b", 1}, {"c", 17}};
+                        CHECK_THROWS_AS(jobject.erase(jobject2.cbegin()), std::runtime_error);
+                        CHECK_THROWS_AS(jobject.erase(jobject.cbegin(), jobject2.cend()), std::runtime_error);
+                        CHECK_THROWS_AS(jobject.erase(jobject2.cbegin(), jobject.cend()), std::runtime_error);
+                        CHECK_THROWS_AS(jobject.erase(jobject2.cbegin(), jobject2.cend()), std::runtime_error);
+                    }
+                }
+            }
+
+            SECTION("remove element by key in non-object type")
+            {
+                SECTION("null")
+                {
+                    json j_nonobject(json::value_t::null);
+                    CHECK_THROWS_AS(j_nonobject.erase("foo"), std::runtime_error);
+                }
+
+                SECTION("boolean")
+                {
+                    json j_nonobject(json::value_t::boolean);
+                    CHECK_THROWS_AS(j_nonobject.erase("foo"), std::runtime_error);
+                }
+
+                SECTION("string")
+                {
+                    json j_nonobject(json::value_t::string);
+                    CHECK_THROWS_AS(j_nonobject.erase("foo"), std::runtime_error);
+                }
+
+                SECTION("array")
+                {
+                    json j_nonobject(json::value_t::array);
+                    CHECK_THROWS_AS(j_nonobject.erase("foo"), std::runtime_error);
+                }
+
+                SECTION("number (integer)")
+                {
+                    json j_nonobject(json::value_t::number_integer);
+                    CHECK_THROWS_AS(j_nonobject.erase("foo"), std::runtime_error);
+                }
+
+                SECTION("number (floating-point)")
+                {
+                    json j_nonobject(json::value_t::number_float);
+                    CHECK_THROWS_AS(j_nonobject.erase("foo"), std::runtime_error);
+                }
+            }
+        }
+
         SECTION("find an element in an object")
         {
             SECTION("existing element")
@@ -2438,6 +3247,429 @@ TEST_CASE("element access")
                     const json j_nonarray_const(j_nonarray);
                     CHECK(j_nonarray.find("foo") == j_nonarray.end());
                     CHECK(j_nonarray_const.find("foo") == j_nonarray_const.end());
+                }
+            }
+        }
+
+        SECTION("count keys in an object")
+        {
+            SECTION("existing element")
+            {
+                for (auto key :
+                        {"integer", "floating", "null", "string", "boolean", "object", "array"
+                        })
+                {
+                    CHECK(j.count(key) == 1);
+                    CHECK(j_const.count(key) == 1);
+                }
+            }
+
+            SECTION("nonexisting element")
+            {
+                CHECK(j.count("foo") == 0);
+                CHECK(j_const.count("foo") == 0);
+            }
+
+            SECTION("all types")
+            {
+                SECTION("null")
+                {
+                    json j_nonobject(json::value_t::null);
+                    const json j_nonobject_const(j_nonobject);
+                    CHECK(j_nonobject.count("foo") == 0);
+                    CHECK(j_nonobject_const.count("foo") == 0);
+                }
+
+                SECTION("string")
+                {
+                    json j_nonobject(json::value_t::string);
+                    const json j_nonobject_const(j_nonobject);
+                    CHECK(j_nonobject.count("foo") == 0);
+                    CHECK(j_nonobject_const.count("foo") == 0);
+                }
+
+                SECTION("object")
+                {
+                    json j_nonobject(json::value_t::object);
+                    const json j_nonobject_const(j_nonobject);
+                    CHECK(j_nonobject.count("foo") == 0);
+                    CHECK(j_nonobject_const.count("foo") == 0);
+                }
+
+                SECTION("array")
+                {
+                    json j_nonobject(json::value_t::array);
+                    const json j_nonobject_const(j_nonobject);
+                    CHECK(j_nonobject.count("foo") == 0);
+                    CHECK(j_nonobject_const.count("foo") == 0);
+                }
+
+                SECTION("boolean")
+                {
+                    json j_nonobject(json::value_t::boolean);
+                    const json j_nonobject_const(j_nonobject);
+                    CHECK(j_nonobject.count("foo") == 0);
+                    CHECK(j_nonobject_const.count("foo") == 0);
+                }
+
+                SECTION("number (integer)")
+                {
+                    json j_nonobject(json::value_t::number_integer);
+                    const json j_nonobject_const(j_nonobject);
+                    CHECK(j_nonobject.count("foo") == 0);
+                    CHECK(j_nonobject_const.count("foo") == 0);
+                }
+
+                SECTION("number (floating-point)")
+                {
+                    json j_nonobject(json::value_t::number_float);
+                    const json j_nonobject_const(j_nonobject);
+                    CHECK(j_nonobject.count("foo") == 0);
+                    CHECK(j_nonobject_const.count("foo") == 0);
+                }
+            }
+        }
+    }
+
+    SECTION("other values")
+    {
+        SECTION("front and back")
+        {
+            SECTION("null")
+            {
+                {
+                    json j;
+                    CHECK_THROWS_AS(j.front(), std::out_of_range);
+                    CHECK_THROWS_AS(j.back(), std::out_of_range);
+                }
+                {
+                    const json j{};
+                    CHECK_THROWS_AS(j.front(), std::out_of_range);
+                    CHECK_THROWS_AS(j.back(), std::out_of_range);
+                }
+            }
+
+            SECTION("string")
+            {
+                {
+                    json j = "foo";
+                    CHECK(j.front() == j);
+                    CHECK(j.back() == j);
+                }
+                {
+                    const json j = "bar";
+                    CHECK(j.front() == j);
+                    CHECK(j.back() == j);
+                }
+            }
+
+            SECTION("number (boolean)")
+            {
+                {
+                    json j = false;
+                    CHECK(j.front() == j);
+                    CHECK(j.back() == j);
+                }
+                {
+                    const json j = true;
+                    CHECK(j.front() == j);
+                    CHECK(j.back() == j);
+                }
+            }
+
+            SECTION("number (integer)")
+            {
+                {
+                    json j = 17;
+                    CHECK(j.front() == j);
+                    CHECK(j.back() == j);
+                }
+                {
+                    const json j = 17;
+                    CHECK(j.front() == j);
+                    CHECK(j.back() == j);
+                }
+            }
+
+            SECTION("number (floating point)")
+            {
+                {
+                    json j = 23.42;
+                    CHECK(j.front() == j);
+                    CHECK(j.back() == j);
+                }
+                {
+                    const json j = 23.42;
+                    CHECK(j.front() == j);
+                    CHECK(j.back() == j);
+                }
+            }
+        }
+
+        SECTION("erase with one valid iterator")
+        {
+            SECTION("null")
+            {
+                {
+                    json j;
+                    CHECK_THROWS_AS(j.erase(j.begin()), std::runtime_error);
+                }
+                {
+                    json j;
+                    CHECK_THROWS_AS(j.erase(j.cbegin()), std::runtime_error);
+                }
+            }
+
+            SECTION("string")
+            {
+                {
+                    json j = "foo";
+                    json::iterator it = j.erase(j.begin());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+                {
+                    json j = "bar";
+                    json::const_iterator it = j.erase(j.cbegin());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+            }
+
+            SECTION("number (boolean)")
+            {
+                {
+                    json j = false;
+                    json::iterator it = j.erase(j.begin());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+                {
+                    json j = true;
+                    json::const_iterator it = j.erase(j.cbegin());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+            }
+
+            SECTION("number (integer)")
+            {
+                {
+                    json j = 17;
+                    json::iterator it = j.erase(j.begin());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+                {
+                    json j = 17;
+                    json::const_iterator it = j.erase(j.cbegin());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+            }
+
+            SECTION("number (floating point)")
+            {
+                {
+                    json j = 23.42;
+                    json::iterator it = j.erase(j.begin());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+                {
+                    json j = 23.42;
+                    json::const_iterator it = j.erase(j.cbegin());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+            }
+        }
+
+        SECTION("erase with one invalid iterator")
+        {
+            SECTION("string")
+            {
+                {
+                    json j = "foo";
+                    CHECK_THROWS_AS(j.erase(j.end()), std::out_of_range);
+                }
+                {
+                    json j = "bar";
+                    CHECK_THROWS_AS(j.erase(j.cend()), std::out_of_range);
+                }
+            }
+
+            SECTION("number (boolean)")
+            {
+                {
+                    json j = false;
+                    CHECK_THROWS_AS(j.erase(j.end()), std::out_of_range);
+                }
+                {
+                    json j = true;
+                    CHECK_THROWS_AS(j.erase(j.cend()), std::out_of_range);
+                }
+            }
+
+            SECTION("number (integer)")
+            {
+                {
+                    json j = 17;
+                    CHECK_THROWS_AS(j.erase(j.end()), std::out_of_range);
+                }
+                {
+                    json j = 17;
+                    CHECK_THROWS_AS(j.erase(j.cend()), std::out_of_range);
+                }
+            }
+
+            SECTION("number (floating point)")
+            {
+                {
+                    json j = 23.42;
+                    CHECK_THROWS_AS(j.erase(j.end()), std::out_of_range);
+                }
+                {
+                    json j = 23.42;
+                    CHECK_THROWS_AS(j.erase(j.cend()), std::out_of_range);
+                }
+            }
+        }
+
+        SECTION("erase with two valid iterators")
+        {
+            SECTION("null")
+            {
+                {
+                    json j;
+                    CHECK_THROWS_AS(j.erase(j.begin(), j.end()), std::runtime_error);
+                }
+                {
+                    json j;
+                    CHECK_THROWS_AS(j.erase(j.cbegin(), j.cend()), std::runtime_error);
+                }
+            }
+
+            SECTION("string")
+            {
+                {
+                    json j = "foo";
+                    json::iterator it = j.erase(j.begin(), j.end());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+                {
+                    json j = "bar";
+                    json::const_iterator it = j.erase(j.cbegin(), j.cend());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+            }
+
+            SECTION("number (boolean)")
+            {
+                {
+                    json j = false;
+                    json::iterator it = j.erase(j.begin(), j.end());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+                {
+                    json j = true;
+                    json::const_iterator it = j.erase(j.cbegin(), j.cend());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+            }
+
+            SECTION("number (integer)")
+            {
+                {
+                    json j = 17;
+                    json::iterator it = j.erase(j.begin(), j.end());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+                {
+                    json j = 17;
+                    json::const_iterator it = j.erase(j.cbegin(), j.cend());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+            }
+
+            SECTION("number (floating point)")
+            {
+                {
+                    json j = 23.42;
+                    json::iterator it = j.erase(j.begin(), j.end());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+                {
+                    json j = 23.42;
+                    json::const_iterator it = j.erase(j.cbegin(), j.cend());
+                    CHECK(j.type() == json::value_t::null);
+                    CHECK(it == j.end());
+                }
+            }
+        }
+
+        SECTION("erase with two invalid iterators")
+        {
+            SECTION("string")
+            {
+                {
+                    json j = "foo";
+                    CHECK_THROWS_AS(j.erase(j.end(), j.end()), std::out_of_range);
+                    CHECK_THROWS_AS(j.erase(j.begin(), j.begin()), std::out_of_range);
+                }
+                {
+                    json j = "bar";
+                    CHECK_THROWS_AS(j.erase(j.cend(), j.cend()), std::out_of_range);
+                    CHECK_THROWS_AS(j.erase(j.cbegin(), j.cbegin()), std::out_of_range);
+                }
+            }
+
+            SECTION("number (boolean)")
+            {
+                {
+                    json j = false;
+                    CHECK_THROWS_AS(j.erase(j.end(), j.end()), std::out_of_range);
+                    CHECK_THROWS_AS(j.erase(j.begin(), j.begin()), std::out_of_range);
+                }
+                {
+                    json j = true;
+                    CHECK_THROWS_AS(j.erase(j.cend(), j.cend()), std::out_of_range);
+                    CHECK_THROWS_AS(j.erase(j.cbegin(), j.cbegin()), std::out_of_range);
+                }
+            }
+
+            SECTION("number (integer)")
+            {
+                {
+                    json j = 17;
+                    CHECK_THROWS_AS(j.erase(j.end(), j.end()), std::out_of_range);
+                    CHECK_THROWS_AS(j.erase(j.begin(), j.begin()), std::out_of_range);
+                }
+                {
+                    json j = 17;
+                    CHECK_THROWS_AS(j.erase(j.cend(), j.cend()), std::out_of_range);
+                    CHECK_THROWS_AS(j.erase(j.cbegin(), j.cbegin()), std::out_of_range);
+                }
+            }
+
+            SECTION("number (floating point)")
+            {
+                {
+                    json j = 23.42;
+                    CHECK_THROWS_AS(j.erase(j.end(), j.end()), std::out_of_range);
+                    CHECK_THROWS_AS(j.erase(j.begin(), j.begin()), std::out_of_range);
+                }
+                {
+                    json j = 23.42;
+                    CHECK_THROWS_AS(j.erase(j.cend(), j.cend()), std::out_of_range);
+                    CHECK_THROWS_AS(j.erase(j.cbegin(), j.cbegin()), std::out_of_range);
                 }
             }
         }
@@ -2636,6 +3868,23 @@ TEST_CASE("iterators")
                 CHECK(it != j_const.crend());
                 CHECK(*it == j_const);
             }
+
+            SECTION("key/value")
+            {
+                auto it = j.begin();
+                auto cit = j_const.cbegin();
+                CHECK_THROWS_AS(it.key(), std::domain_error);
+                CHECK(it.value() == json(true));
+                CHECK_THROWS_AS(cit.key(), std::domain_error);
+                CHECK(cit.value() == json(true));
+
+                auto rit = j.rend();
+                auto crit = j.crend();
+                CHECK_THROWS_AS(rit.key(), std::domain_error);
+                CHECK(rit.value() == json(true));
+                CHECK_THROWS_AS(crit.key(), std::domain_error);
+                CHECK(crit.value() == json(true));
+            }
         }
 
         SECTION("string")
@@ -2817,6 +4066,23 @@ TEST_CASE("iterators")
                 CHECK(it != j_const.crend());
                 CHECK(*it == j_const);
             }
+
+            SECTION("key/value")
+            {
+                auto it = j.begin();
+                auto cit = j_const.cbegin();
+                CHECK_THROWS_AS(it.key(), std::domain_error);
+                CHECK(it.value() == json("hello world"));
+                CHECK_THROWS_AS(cit.key(), std::domain_error);
+                CHECK(cit.value() == json("hello world"));
+
+                auto rit = j.rend();
+                auto crit = j.crend();
+                CHECK_THROWS_AS(rit.key(), std::domain_error);
+                CHECK(rit.value() == json("hello world"));
+                CHECK_THROWS_AS(crit.key(), std::domain_error);
+                CHECK(crit.value() == json("hello world"));
+            }
         }
 
         SECTION("array")
@@ -2991,6 +4257,23 @@ TEST_CASE("iterators")
                 CHECK(it != it_begin);
                 CHECK(it == it_end);
             }
+
+            SECTION("key/value")
+            {
+                auto it = j.begin();
+                auto cit = j_const.cbegin();
+                CHECK_THROWS_AS(it.key(), std::domain_error);
+                CHECK(it.value() == json(1));
+                CHECK_THROWS_AS(cit.key(), std::domain_error);
+                CHECK(cit.value() == json(1));
+
+                auto rit = j.rend();
+                auto crit = j.crend();
+                CHECK_THROWS_AS(rit.key(), std::domain_error);
+                CHECK(rit.value() == json(1));
+                CHECK_THROWS_AS(crit.key(), std::domain_error);
+                CHECK(crit.value() == json(1));
+            }
         }
 
         SECTION("object")
@@ -3164,6 +4447,23 @@ TEST_CASE("iterators")
                 ++it;
                 CHECK(it != it_begin);
                 CHECK(it == it_end);
+            }
+
+            SECTION("key/value")
+            {
+                auto it = j.begin();
+                auto cit = j_const.cbegin();
+                CHECK(it.key() == "A");
+                CHECK(it.value() == json(1));
+                CHECK(cit.key() == "A");
+                CHECK(cit.value() == json(1));
+
+                auto rit = j.rend();
+                auto crit = j.crend();
+                CHECK(rit.key() == "A");
+                CHECK(rit.value() == json(1));
+                CHECK(crit.key() == "A");
+                CHECK(crit.value() == json(1));
             }
         }
 
@@ -3346,6 +4646,23 @@ TEST_CASE("iterators")
                 CHECK(it != j_const.crend());
                 CHECK(*it == j_const);
             }
+
+            SECTION("key/value")
+            {
+                auto it = j.begin();
+                auto cit = j_const.cbegin();
+                CHECK_THROWS_AS(it.key(), std::domain_error);
+                CHECK(it.value() == json(23));
+                CHECK_THROWS_AS(cit.key(), std::domain_error);
+                CHECK(cit.value() == json(23));
+
+                auto rit = j.rend();
+                auto crit = j.crend();
+                CHECK_THROWS_AS(rit.key(), std::domain_error);
+                CHECK(rit.value() == json(23));
+                CHECK_THROWS_AS(crit.key(), std::domain_error);
+                CHECK(crit.value() == json(23));
+            }
         }
 
         SECTION("number (float)")
@@ -3527,6 +4844,23 @@ TEST_CASE("iterators")
                 CHECK(it != j_const.crend());
                 CHECK(*it == j_const);
             }
+
+            SECTION("key/value")
+            {
+                auto it = j.begin();
+                auto cit = j_const.cbegin();
+                CHECK_THROWS_AS(it.key(), std::domain_error);
+                CHECK(it.value() == json(23.42));
+                CHECK_THROWS_AS(cit.key(), std::domain_error);
+                CHECK(cit.value() == json(23.42));
+
+                auto rit = j.rend();
+                auto crit = j.crend();
+                CHECK_THROWS_AS(rit.key(), std::domain_error);
+                CHECK(rit.value() == json(23.42));
+                CHECK_THROWS_AS(crit.key(), std::domain_error);
+                CHECK(crit.value() == json(23.42));
+            }
         }
 
         SECTION("null")
@@ -3577,6 +4911,23 @@ TEST_CASE("iterators")
             {
                 json::const_reverse_iterator it = j_const.crbegin();
                 CHECK(it == j_const.crend());
+            }
+
+            SECTION("key/value")
+            {
+                auto it = j.begin();
+                auto cit = j_const.cbegin();
+                CHECK_THROWS_AS(it.key(), std::domain_error);
+                CHECK_THROWS_AS(it.value(), std::out_of_range);
+                CHECK_THROWS_AS(cit.key(), std::domain_error);
+                CHECK_THROWS_AS(cit.value(), std::out_of_range);
+
+                auto rit = j.rend();
+                auto crit = j.crend();
+                CHECK_THROWS_AS(rit.key(), std::domain_error);
+                CHECK_THROWS_AS(rit.value(), std::out_of_range);
+                CHECK_THROWS_AS(crit.key(), std::domain_error);
+                CHECK_THROWS_AS(crit.value(), std::out_of_range);
             }
         }
     }
@@ -4882,6 +6233,15 @@ TEST_CASE("lexicographical comparison operators")
                     CHECK( (j_values[i] == j_values[j]) == expected[i][j] );
                 }
             }
+
+            // comparison with discarded elements
+            json j_discarded(json::value_t::discarded);
+            for (size_t i = 0; i < j_values.size(); ++i)
+            {
+                CHECK( (j_values[i] == j_discarded) == false);
+                CHECK( (j_discarded == j_values[i]) == false);
+                CHECK( (j_discarded == j_discarded) == false);
+            }
         }
 
         SECTION("comparison: not equal")
@@ -4923,6 +6283,15 @@ TEST_CASE("lexicographical comparison operators")
                     // check precomputed values
                     CHECK( (j_values[i] < j_values[j]) == expected[i][j] );
                 }
+            }
+
+            // comparison with discarded elements
+            json j_discarded(json::value_t::discarded);
+            for (size_t i = 0; i < j_values.size(); ++i)
+            {
+                CHECK( (j_values[i] < j_discarded) == false);
+                CHECK( (j_discarded < j_values[i]) == false);
+                CHECK( (j_discarded < j_discarded) == false);
             }
         }
 
@@ -5010,6 +6379,14 @@ TEST_CASE("serialization")
 
 TEST_CASE("deserialization")
 {
+    SECTION("stream")
+    {
+        std::stringstream ss;
+        ss << "[\"foo\",1,2,3,false,{\"one\":1}]";
+        json j = json::parse(ss);
+        CHECK(j == json({"foo", 1, 2, 3, false, {{"one", 1}}}));
+    }
+
     SECTION("string")
     {
         auto s = "[\"foo\",1,2,3,false,{\"one\":1}]";
@@ -5780,6 +7157,7 @@ TEST_CASE("convenience functions")
         CHECK(json(json::value_t::number_float).type_name() == "number");
         CHECK(json(json::value_t::boolean).type_name() == "boolean");
         CHECK(json(json::value_t::string).type_name() == "string");
+        CHECK(json(json::value_t::discarded).type_name() == "discarded");
     }
 
     SECTION("string escape")
@@ -6001,12 +7379,12 @@ TEST_CASE("parser class")
 
             SECTION("escaped")
             {
-                // quotation mark
-                CHECK(json::parser("\"\\\"\"").parse() == json("\\\""));
-                // reverse solidus
-                CHECK(json::parser("\"\\\\\"").parse() == json("\\\\"));
+                // quotation mark "\""
+                CHECK(json::parser("\"\\\"\"").parse() == R"("\"")"_json);
+                // reverse solidus "\\"
+                CHECK(json::parser("\"\\\\\"").parse() == R"("\\")"_json);
                 // solidus
-                CHECK(json::parser("\"\\/\"").parse() == json("\\/"));
+                CHECK(json::parser("\"\\/\"").parse() == R"("/")"_json);
                 // backspace
                 CHECK(json::parser("\"\\b\"").parse() == json("\b"));
                 // formfeed
@@ -6017,6 +7395,20 @@ TEST_CASE("parser class")
                 CHECK(json::parser("\"\\r\"").parse() == json("\r"));
                 // horizontal tab
                 CHECK(json::parser("\"\\t\"").parse() == json("\t"));
+
+                // exotic test cases for full coverage
+                {
+                    {
+                        std::stringstream ss;
+                        ss << "\"\\u000\n1\"";
+                        CHECK(json::parser(ss).parse().get<json::string_t>() == "\x01");
+                    }
+                    {
+                        std::stringstream ss;
+                        ss << "\"\\u00\n01\"";
+                        CHECK(json::parser(ss).parse().get<json::string_t>() == "\x01");
+                    }
+                }
 
                 CHECK(json::parser("\"\\u0001\"").parse().get<json::string_t>() == "\x01");
                 CHECK(json::parser("\"\\u000a\"").parse().get<json::string_t>() == "\n");
@@ -6289,6 +7681,126 @@ TEST_CASE("parser class")
         CHECK_THROWS_AS(json::parse("\"\\uD80C\\uD80C\""), std::invalid_argument);
         CHECK_THROWS_AS(json::parse("\"\\uD80C\\u0000\""), std::invalid_argument);
         CHECK_THROWS_AS(json::parse("\"\\uD80C\\uFFFF\""), std::invalid_argument);
+    }
+
+    SECTION("callback function")
+    {
+        auto s_object = R"(
+            {
+                "foo": 2,
+                "bar": {
+                    "baz": 1
+                }
+            }
+        )";
+
+        auto s_array = R"(
+            [1,2,[3,4,5],4,5]
+        )";
+
+        SECTION("filter nothing")
+        {
+            json j_object = json::parse(s_object, [](int, json::parse_event_t, const json&)
+            {
+                return true;
+            });
+
+            CHECK (j_object == json({{"foo", 2}, {"bar", {{"baz", 1}}}}));
+
+            json j_array = json::parse(s_array, [](int, json::parse_event_t, const json&)
+            {
+                return true;
+            });
+
+            CHECK (j_array == json({1, 2, {3, 4, 5}, 4, 5}));
+        }
+
+        SECTION("filter everything")
+        {
+            json j_object = json::parse(s_object, [](int, json::parse_event_t, const json&)
+            {
+                return false;
+            });
+
+            CHECK (j_object.is_discarded());
+
+            json j_array = json::parse(s_array, [](int, json::parse_event_t, const json&)
+            {
+                return false;
+            });
+
+            CHECK (j_array.is_discarded());
+        }
+
+        SECTION("filter specific element")
+        {
+            json j_object = json::parse(s_object, [](int, json::parse_event_t, const json & j)
+            {
+                // filter all number(2) elements
+                if (j == json(2))
+                {
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            });
+
+            CHECK (j_object == json({{"bar", {{"baz", 1}}}}));
+
+            json j_array = json::parse(s_array, [](int, json::parse_event_t, const json & j)
+            {
+                if (j == json(2))
+                {
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            });
+
+            CHECK (j_array == json({1, {3, 4, 5}, 4, 5}));
+        }
+
+        SECTION("filter specific events")
+        {
+            SECTION("first closing event")
+            {
+                {
+                    json j_object = json::parse(s_object, [](int, json::parse_event_t e, const json&)
+                    {
+                        if (e == json::parse_event_t::object_end)
+                        {
+                            return false;
+                        }
+                        else
+                        {
+                            return true;
+                        }
+                    });
+
+                    CHECK (j_object.is_discarded());
+                }
+
+                {
+                    json j_array = json::parse(s_array, [](int, json::parse_event_t e, const json&)
+                    {
+                        if (e == json::parse_event_t::array_end)
+                        {
+                            return false;
+                        }
+                        else
+                        {
+                            return true;
+                        }
+                    });
+
+                    CHECK (j_array.is_discarded());
+                }
+            }
+        }
     }
 }
 
@@ -6797,6 +8309,56 @@ TEST_CASE("algorithms")
 
 TEST_CASE("concepts")
 {
+    SECTION("container requirements for json")
+    {
+        // X: container class: json
+        // T: type of objects: json
+        // a, b: values of type X: json
+
+        // TABLE 96 - Container Requirements
+
+        // X::value_type must return T
+        CHECK((std::is_same<json::value_type, json>::value));
+
+        // X::reference must return lvalue of T
+        CHECK((std::is_same<json::reference, json&>::value));
+
+        // X::const_reference must return const lvalue of T
+        CHECK((std::is_same<json::const_reference, const json&>::value));
+
+        // X::iterator must return iterator whose value_type is T
+        CHECK((std::is_same<json::iterator::value_type, json>::value));
+        // X::iterator must meet the forward iterator requirements
+        CHECK((std::is_base_of<std::forward_iterator_tag, typename std::iterator_traits<json::iterator>::iterator_category>::value));
+        // X::iterator must be convertible to X::const_iterator
+        CHECK((std::is_convertible<json::iterator, json::const_iterator>::value));
+
+        // X::const_iterator must return iterator whose value_type is T
+        CHECK((std::is_same<json::const_iterator::value_type, json>::value));
+        // X::const_iterator must meet the forward iterator requirements
+        CHECK((std::is_base_of<std::forward_iterator_tag, typename std::iterator_traits<json::const_iterator>::iterator_category>::value));
+
+        // X::difference_type must return a signed integer
+        CHECK((std::is_signed<json::difference_type>::value));
+        // X::difference_type must be identical to X::iterator::difference_type
+        CHECK((std::is_same<json::difference_type, json::iterator::difference_type>::value));
+        // X::difference_type must be identical to X::const_iterator::difference_type
+        CHECK((std::is_same<json::difference_type, json::const_iterator::difference_type>::value));
+
+        // X::size_type must return an unsigned integer
+        CHECK((std::is_unsigned<json::size_type>::value));
+        // X::size_type can represent any non-negative value of X::difference_type
+
+        // the expression "X u" has the post-condition "u.empty()"
+        {
+            json u;
+            CHECK(u.empty());
+        }
+
+        // the expression "X()" has the post-condition "X().empty()"
+        CHECK(json().empty());
+    }
+
     SECTION("class json")
     {
         SECTION("DefaultConstructible")
@@ -6873,6 +8435,19 @@ TEST_CASE("concepts")
                 CHECK(it1 == j.end());
                 CHECK(it2 == j.begin());
             }
+        }
+    }
+}
+
+TEST_CASE("regression tests")
+{
+    SECTION("issue #60 - Double quotation mark is not parsed correctly")
+    {
+        SECTION("escape_dobulequote")
+        {
+            auto s = "[\"\\\"foo\\\"\"]";
+            json j = json::parse(s);
+            CHECK(j == R"(["\"foo\""])"_json);
         }
     }
 }

@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/nlohmann/json.png?branch=master)](https://travis-ci.org/nlohmann/json)
 [![Coverage Status](https://img.shields.io/coveralls/nlohmann/json.svg)](https://coveralls.io/r/nlohmann/json)
+[![Documentation Status](https://readthedocs.org/projects/json/badge/?version=latest)](https://readthedocs.org/projects/json/?badge=latest)
 [![Github Issues](https://img.shields.io/github/issues/nlohmann/json.svg)](http://github.com/nlohmann/json/issues)
 
 ## Design goals
@@ -33,7 +34,6 @@ As of February 2015, the following updates were made to the library
 - *Added*: The class uses **user-defined allocators** which default to `std::allocator`, but can be templated via parameter `Allocator`.
 - *Added:* To simplify pretty-printing, the `std::setw` **stream manipulator** has been overloaded to set the desired indentation. Pretty-printing a JSON object `j` is as simple as `std::cout << std::setw(4) << j << '\n'`.
 - *Changed*: The type `json::value_t::number` is now called `json::value_t::number_integer` to be more symmetric compared to `json::value_t::number_float`.
-- *Removed:* The `key()` and `value()` member functions for object iterators were nonstandard and yielded more problems than benefits. They were removed from the library.
 
 ## Integration
 
@@ -47,6 +47,20 @@ using json = nlohmann::json;
 ```
 
 to the files you want to use JSON objects. That's it. Do not forget to set the necessary switches to enable C++11 (e.g., `-std=c++11` for GCC and Clang).
+
+## Supported compilers
+
+Though it's 2015 already, the support for C++11 is still a bit sparse. Currently, the following compilers are known to work:
+
+- GCC 4.8
+- GCC 4.9
+- GCC 5.0
+- Clang 3.4
+- Clang 3.5
+
+I would be happy to learn about other compilers/versions.
+
+Unfortunately, Microsoft Visual C++ support at the moment. MSVC 2013 and MSVC 2014 have been reported not to be able to compile class. Note that I will not accept pull requests that "fix" the code by polluting it with preprocessor directives to mitigate MSVC's lacking C++11 support.
 
 ## Examples
 
@@ -229,10 +243,22 @@ o["foo"] = 23;
 o["bar"] = false;
 o["baz"] = 3.141;
 
+// special iterator member functions for objects
+for (json::iterator it = o.begin(); it != o.end(); ++it) {
+  std::cout << it.key() << " : " << it.value() << "\n";
+}
+
 // find an entry
 if (o.find("foo") != o.end()) {
   // there is an entry with key "foo"
 }
+
+// or simpler using count()
+int foo_present = o.count("foo"); // 1
+int fob_present = o.count("fob"); // 0
+
+// delete an entry
+o.erase("foo");
 ```
 
 ### Conversion from STL containers
@@ -353,6 +379,10 @@ I deeply appreciate the help of the following people.
 - [kirkshoop](https://github.com/kirkshoop) made the iterators of the class composable to other libraries.
 - [wancw](https://github.com/wanwc) fixed a bug that hindered the class to compile with Clang.
 - Tomas Åblad found a bug in the iterator implementation.
+- [Joshua C. Randall](https://github.com/jrandall) fixed a bug in the floating-point serialization.
+- [Aaron Burghardt](https://github.com/aburgh) implemented code to parse streams incrementally. Furthermore, he greatly improved the parser class by allowing the definition of a filter function to discard undesired elements while parsing.
+- [Daniel Kopeček](https://github.com/dkopecek) fixed a bug in the compilation with GCC 5.0.
+- [Florian Weber](https://github.com/Florianjw) fixed a bug in and improved the performance of the comparison operators.
 
 Thanks a lot for helping out!
 
@@ -365,7 +395,7 @@ $ make
 $ ./json_unit
 
 ===============================================================================
-All tests passed (4280 assertions in 16 test cases)
+All tests passed (4558 assertions in 19 test cases)
 ```
 
 For more information, have a look at the file [.travis.yml](https://github.com/nlohmann/json/blob/master/.travis.yml).
