@@ -147,6 +147,23 @@ class basic_json
     using list_init_t = std::initializer_list<basic_json>;
 
 
+    /////////////////////////////////
+    // JSON value type enumeration //
+    /////////////////////////////////
+
+    /// JSON value type enumeration
+    enum class value_t : uint8_t
+    {
+        null,           ///< null value
+        object,         ///< object (unordered set of name/value pairs)
+        array,          ///< array (ordered collection of values)
+        string,         ///< string value
+        boolean,        ///< boolean value
+        number_integer, ///< number value (integer)
+        number_float,   ///< number value (floating-point)
+        discarded       ///< (internal) indicates the parser callback chose not to keep the value
+    };
+
     ////////////////////////
     // JSON value storage //
     ////////////////////////
@@ -168,31 +185,91 @@ class basic_json
         number_float_t number_float;
 
         /// default constructor (for null values)
-        json_value() = default;
+        inline json_value() noexcept = default;
         /// constructor for booleans
-        json_value(boolean_t v) : boolean(v) {}
+        inline json_value(boolean_t v) noexcept : boolean(v) {}
         /// constructor for numbers (integer)
-        json_value(number_integer_t v) : number_integer(v) {}
+        inline json_value(number_integer_t v) noexcept : number_integer(v) {}
         /// constructor for numbers (floating-point)
-        json_value(number_float_t v) : number_float(v) {}
-    };
+        inline json_value(number_float_t v) noexcept : number_float(v) {}
+        /// constructor for empty values of a given type
+        inline json_value(value_t t)
+        {
+            switch (t)
+            {
+                case (value_t::null):
+                case (value_t::discarded):
+                {
+                    break;
+                }
 
+                case (value_t::object):
+                {
+                    AllocatorType<object_t> alloc;
+                    object = alloc.allocate(1);
+                    alloc.construct(object);
+                    break;
+                }
 
-    /////////////////////////////////
-    // JSON value type enumeration //
-    /////////////////////////////////
+                case (value_t::array):
+                {
+                    AllocatorType<array_t> alloc;
+                    array = alloc.allocate(1);
+                    alloc.construct(array);
+                    break;
+                }
 
-    /// JSON value type enumeration
-    enum class value_t : uint8_t
-    {
-        null,           ///< null value
-        object,         ///< object (unordered set of name/value pairs)
-        array,          ///< array (ordered collection of values)
-        string,         ///< string value
-        boolean,        ///< boolean value
-        number_integer, ///< number value (integer)
-        number_float,   ///< number value (floating-point)
-        discarded       ///< (internal) indicates the parser callback chose not to keep the value
+                case (value_t::string):
+                {
+                    AllocatorType<string_t> alloc;
+                    string = alloc.allocate(1);
+                    alloc.construct(string, "");
+                    break;
+                }
+
+                case (value_t::boolean):
+                {
+                    boolean = boolean_t(false);
+                    break;
+                }
+
+                case (value_t::number_integer):
+                {
+                    number_integer = number_integer_t(0);
+                    break;
+                }
+
+                case (value_t::number_float):
+                {
+                    number_float = number_float_t(0.0);
+                    break;
+                }
+            }
+        }
+
+        /// constructor for strings
+        inline json_value(const string_t& value)
+        {
+            AllocatorType<string_t> alloc;
+            string = alloc.allocate(1);
+            alloc.construct(string, value);
+        }
+
+        /// constructor for objects
+        inline json_value(const object_t& value)
+        {
+            AllocatorType<object_t> alloc;
+            object = alloc.allocate(1);
+            alloc.construct(object, value);
+        }
+
+        /// constructor for arrays
+        inline json_value(const array_t& value)
+        {
+            AllocatorType<array_t> alloc;
+            array = alloc.allocate(1);
+            alloc.construct(array, value);
+        }
     };
 
     //////////////////////////
@@ -213,12 +290,6 @@ class basic_json
     /// per-element parser callback type
     using parser_callback_t = std::function<bool(int depth, parse_event_t event,
                               const basic_json& parsed)>;
-
-    /// default parser callback returns true to keep all elements
-    static bool default_callback(int, parse_event_t, const basic_json&)
-    {
-        return true;
-    }
 
     /*!
     @brief comparison operator for JSON value types
@@ -261,59 +332,8 @@ class basic_json
     @exception std::bad_alloc  if allocation for object, array, or string fails.
     */
     inline basic_json(const value_t value)
-        : m_type(value)
-    {
-        switch (m_type)
-        {
-            case (value_t::null):
-            case (value_t::discarded):
-            {
-                break;
-            }
-
-            case (value_t::object):
-            {
-                AllocatorType<object_t> alloc;
-                m_value.object = alloc.allocate(1);
-                alloc.construct(m_value.object);
-                break;
-            }
-
-            case (value_t::array):
-            {
-                AllocatorType<array_t> alloc;
-                m_value.array = alloc.allocate(1);
-                alloc.construct(m_value.array);
-                break;
-            }
-
-            case (value_t::string):
-            {
-                AllocatorType<string_t> alloc;
-                m_value.string = alloc.allocate(1);
-                alloc.construct(m_value.string, "");
-                break;
-            }
-
-            case (value_t::boolean):
-            {
-                m_value.boolean = boolean_t(false);
-                break;
-            }
-
-            case (value_t::number_integer):
-            {
-                m_value.number_integer = number_integer_t(0);
-                break;
-            }
-
-            case (value_t::number_float):
-            {
-                m_value.number_float = number_float_t(0.0);
-                break;
-            }
-        }
-    }
+        : m_type(value), m_value(value)
+    {}
 
     /*!
     @brief create a null object (implicitly)
@@ -323,17 +343,13 @@ class basic_json
 
     /// create a null object (explicitly)
     inline basic_json(std::nullptr_t) noexcept
-        : m_type(value_t::null)
+        : basic_json(value_t::null)
     {}
 
     /// create an object (explicit)
     inline basic_json(const object_t& value)
-        : m_type(value_t::object)
-    {
-        AllocatorType<object_t> alloc;
-        m_value.object = alloc.allocate(1);
-        alloc.construct(m_value.object, value);
-    }
+        : m_type(value_t::object), m_value(value)
+    {}
 
     /// create an object (implicit)
     template <class V, typename
@@ -353,12 +369,8 @@ class basic_json
 
     /// create an array (explicit)
     inline basic_json(const array_t& value)
-        : m_type(value_t::array)
-    {
-        AllocatorType<array_t> alloc;
-        m_value.array = alloc.allocate(1);
-        alloc.construct(m_value.array, value);
-    }
+        : m_type(value_t::array), m_value(value)
+    {}
 
     /// create an array (implicit)
     template <class V, typename
@@ -383,21 +395,13 @@ class basic_json
 
     /// create a string (explicit)
     inline basic_json(const string_t& value)
-        : m_type(value_t::string)
-    {
-        AllocatorType<string_t> alloc;
-        m_value.string = alloc.allocate(1);
-        alloc.construct(m_value.string, value);
-    }
+        : m_type(value_t::string), m_value(value)
+    {}
 
     /// create a string (explicit)
     inline basic_json(const typename string_t::value_type* value)
-        : m_type(value_t::string)
-    {
-        AllocatorType<string_t> alloc;
-        m_value.string = alloc.allocate(1);
-        alloc.construct(m_value.string, value);
-    }
+        : basic_json(string_t(value))
+    {}
 
     /// create a string (implicit)
     template <class V, typename
@@ -418,6 +422,11 @@ class basic_json
         : m_type(value_t::number_integer), m_value(value)
     {}
 
+    /// create an int number to support enum type (implicit)
+    inline basic_json(const int int_enum)
+        : basic_json(static_cast<number_integer_t>(int_enum))
+    {}
+
     /// create an integer number (implicit)
     template<typename T, typename
              std::enable_if<
@@ -425,13 +434,20 @@ class basic_json
                  std::numeric_limits<T>::is_integer, T>::type
              = 0>
     inline basic_json(const T value) noexcept
-        : m_type(value_t::number_integer), m_value(number_integer_t(value))
+        : basic_json(number_integer_t(value))
     {}
 
     /// create a floating-point number (explicit)
     inline basic_json(const number_float_t& value)
         : m_type(value_t::number_float), m_value(value)
-    {}
+    {
+        // replace infinity and NAN by null
+        if (not std::isfinite(value))
+        {
+            m_type = value_t::null;
+            m_value = json_value();
+        }
+    }
 
     /// create a floating-point number (implicit)
     template<typename T, typename = typename
@@ -440,7 +456,7 @@ class basic_json
                  std::is_floating_point<T>::value>::type
              >
     inline basic_json(const T value) noexcept
-        : m_type(value_t::number_float), m_value(number_float_t(value))
+        : basic_json(number_float_t(value))
     {}
 
     /// create a container (array or object) from an initializer list
@@ -484,9 +500,7 @@ class basic_json
         {
             // the initializer list is a list of pairs -> create object
             m_type = value_t::object;
-            AllocatorType<object_t> alloc;
-            m_value.object = alloc.allocate(1);
-            alloc.construct(m_value.object);
+            m_value = value_t::object;
 
             for (auto& element : init)
             {
@@ -586,9 +600,7 @@ class basic_json
 
             case value_t::string:
             {
-                AllocatorType<string_t> alloc;
-                m_value.string = alloc.allocate(1);
-                alloc.construct(m_value.string, *first.m_object->m_value.string);
+                m_value = *first.m_object->m_value.string;
                 break;
             }
 
@@ -639,43 +651,37 @@ class basic_json
 
             case (value_t::object):
             {
-                AllocatorType<object_t> alloc;
-                m_value.object = alloc.allocate(1);
-                alloc.construct(m_value.object, *other.m_value.object);
+                m_value = *other.m_value.object;
                 break;
             }
 
             case (value_t::array):
             {
-                AllocatorType<array_t> alloc;
-                m_value.array = alloc.allocate(1);
-                alloc.construct(m_value.array, *other.m_value.array);
+                m_value = *other.m_value.array;
                 break;
             }
 
             case (value_t::string):
             {
-                AllocatorType<string_t> alloc;
-                m_value.string = alloc.allocate(1);
-                alloc.construct(m_value.string, *other.m_value.string);
+                m_value = *other.m_value.string;
                 break;
             }
 
             case (value_t::boolean):
             {
-                m_value.boolean = other.m_value.boolean;
+                m_value = other.m_value.boolean;
                 break;
             }
 
             case (value_t::number_integer):
             {
-                m_value.number_integer = other.m_value.number_integer;
+                m_value = other.m_value.number_integer;
                 break;
             }
 
             case (value_t::number_float):
             {
-                m_value.number_float = other.m_value.number_float;
+                m_value = other.m_value.number_float;
                 break;
             }
         }
@@ -1181,9 +1187,7 @@ class basic_json
         if (m_type == value_t::null)
         {
             m_type = value_t::object;
-            AllocatorType<object_t> alloc;
-            m_value.object = alloc.allocate(1);
-            alloc.construct(m_value.object);
+            m_value = value_t::object;
         }
 
         // at only works for objects
@@ -1707,9 +1711,7 @@ class basic_json
         if (m_type == value_t::null)
         {
             m_type = value_t::array;
-            AllocatorType<array_t> alloc;
-            m_value.array = alloc.allocate(1);
-            alloc.construct(m_value.array);
+            m_value = value_t::array;
         }
 
         // add element to array (move semantics)
@@ -1738,9 +1740,7 @@ class basic_json
         if (m_type == value_t::null)
         {
             m_type = value_t::array;
-            AllocatorType<array_t> alloc;
-            m_value.array = alloc.allocate(1);
-            alloc.construct(m_value.array);
+            m_value = value_t::array;
         }
 
         // add element to array
@@ -1767,9 +1767,7 @@ class basic_json
         if (m_type == value_t::null)
         {
             m_type = value_t::object;
-            AllocatorType<object_t> alloc;
-            m_value.object = alloc.allocate(1);
-            alloc.construct(m_value.object);
+            m_value = value_t::object;
         }
 
         // add element to array
@@ -1988,13 +1986,13 @@ class basic_json
     /////////////////////
 
     /// deserialize from string
-    static basic_json parse(const string_t& s, parser_callback_t cb = default_callback)
+    static basic_json parse(const string_t& s, parser_callback_t cb = nullptr)
     {
         return parser(s, cb).parse();
     }
 
     /// deserialize from stream
-    static basic_json parse(std::istream& i, parser_callback_t cb = default_callback)
+    static basic_json parse(std::istream& i, parser_callback_t cb = nullptr)
     {
         return parser(i, cb).parse();
     }
@@ -2319,13 +2317,12 @@ class basic_json
     ///////////////
 
     /// an iterator value
-    template<typename array_iterator_t, typename object_iterator_t>
     union internal_iterator
     {
         /// iterator for JSON objects
-        object_iterator_t object_iterator;
+        typename object_t::iterator object_iterator;
         /// iterator for JSON arrays
-        array_iterator_t array_iterator;
+        typename array_t::iterator array_iterator;
         /// generic iteraotr for all other value types
         difference_type generic_iterator;
 
@@ -2387,9 +2384,8 @@ class basic_json
         inline iterator& operator=(iterator other) noexcept (
             std::is_nothrow_move_constructible<pointer>::value and
             std::is_nothrow_move_assignable<pointer>::value and
-            std::is_nothrow_move_constructible<internal_iterator<typename array_t::iterator, typename object_t::iterator>>::value
-            and
-            std::is_nothrow_move_assignable<internal_iterator<typename array_t::iterator, typename object_t::iterator>>::value
+            std::is_nothrow_move_constructible<internal_iterator>::value and
+            std::is_nothrow_move_assignable<internal_iterator>::value
         )
         {
             std::swap(m_object, other.m_object);
@@ -2848,7 +2844,7 @@ class basic_json
         /// associated JSON instance
         pointer m_object = nullptr;
         /// the actual iterator of the associated instance
-        internal_iterator<typename array_t::iterator, typename object_t::iterator> m_it;
+        internal_iterator m_it;
     };
 
     /// a const random access iterator for the basic_json class
@@ -2879,12 +2875,12 @@ class basic_json
             {
                 case (basic_json::value_t::object):
                 {
-                    m_it.object_iterator = typename object_t::const_iterator();
+                    m_it.object_iterator = typename object_t::iterator();
                     break;
                 }
                 case (basic_json::value_t::array):
                 {
-                    m_it.array_iterator = typename array_t::const_iterator();
+                    m_it.array_iterator = typename array_t::iterator();
                     break;
                 }
                 default:
@@ -2929,9 +2925,8 @@ class basic_json
         inline const_iterator& operator=(const_iterator other) noexcept(
             std::is_nothrow_move_constructible<pointer>::value and
             std::is_nothrow_move_assignable<pointer>::value and
-            std::is_nothrow_move_constructible<internal_iterator<typename array_t::const_iterator, typename object_t::const_iterator>>::value
-            and
-            std::is_nothrow_move_assignable<internal_iterator<typename array_t::const_iterator, typename object_t::const_iterator>>::value
+            std::is_nothrow_move_constructible<internal_iterator>::value and
+            std::is_nothrow_move_assignable<internal_iterator>::value
         )
         {
             std::swap(m_object, other.m_object);
@@ -2947,13 +2942,13 @@ class basic_json
             {
                 case (basic_json::value_t::object):
                 {
-                    m_it.object_iterator = m_object->m_value.object->cbegin();
+                    m_it.object_iterator = m_object->m_value.object->begin();
                     break;
                 }
 
                 case (basic_json::value_t::array):
                 {
-                    m_it.array_iterator = m_object->m_value.array->cbegin();
+                    m_it.array_iterator = m_object->m_value.array->begin();
                     break;
                 }
 
@@ -2979,13 +2974,13 @@ class basic_json
             {
                 case (basic_json::value_t::object):
                 {
-                    m_it.object_iterator = m_object->m_value.object->cend();
+                    m_it.object_iterator = m_object->m_value.object->end();
                     break;
                 }
 
                 case (basic_json::value_t::array):
                 {
-                    m_it.array_iterator = m_object->m_value.array->cend();
+                    m_it.array_iterator = m_object->m_value.array->end();
                     break;
                 }
 
@@ -3384,7 +3379,7 @@ class basic_json
         /// associated JSON instance
         pointer m_object = nullptr;
         /// the actual iterator of the associated instance
-        internal_iterator<typename array_t::const_iterator, typename object_t::const_iterator> m_it;
+        internal_iterator m_it;
     };
 
     /// a reverse random access iterator for the basic_json class
@@ -3613,369 +3608,758 @@ class basic_json
             // remember the begin of the token
             m_start = m_cursor;
 
-            
-    {
-        lexer_char_t yych;
-        unsigned int yyaccept = 0;
-        static const unsigned char yybm[] = {
-              0,  64,  64,  64,  64,  64,  64,  64, 
-             64,  96,  96,  64,  64,  96,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             96,  64,   0,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-            192, 192, 192, 192, 192, 192, 192, 192, 
-            192, 192,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,   0,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-             64,  64,  64,  64,  64,  64,  64,  64, 
-        };
 
-        if ((m_limit - m_cursor) < 5) { yyfill(); };
-        yych = *m_cursor;
-        if (yych <= '9') {
-            if (yych <= ' ') {
-                if (yych <= '\n') {
-                    if (yych <= 0x00) goto basic_json_parser_27;
-                    if (yych <= 0x08) goto basic_json_parser_29;
-                    if (yych >= '\n') goto basic_json_parser_4;
-                } else {
-                    if (yych == '\r') goto basic_json_parser_2;
-                    if (yych <= 0x1F) goto basic_json_parser_29;
+            {
+                lexer_char_t yych;
+                unsigned int yyaccept = 0;
+                static const unsigned char yybm[] =
+                {
+                    0,   0,   0,   0,   0,   0,   0,   0,
+                    0,  32,  32,   0,   0,  32,   0,   0,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    96,  64,   0,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    192, 192, 192, 192, 192, 192, 192, 192,
+                    192, 192,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,   0,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                    64,  64,  64,  64,  64,  64,  64,  64,
+                };
+
+                if ((m_limit - m_cursor) < 5)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
                 }
-            } else {
-                if (yych <= ',') {
-                    if (yych == '"') goto basic_json_parser_26;
-                    if (yych <= '+') goto basic_json_parser_29;
-                    goto basic_json_parser_14;
-                } else {
-                    if (yych <= '-') goto basic_json_parser_22;
-                    if (yych <= '/') goto basic_json_parser_29;
-                    if (yych <= '0') goto basic_json_parser_23;
-                    goto basic_json_parser_25;
+                yych = *m_cursor;
+                if (yych <= '9')
+                {
+                    if (yych <= ' ')
+                    {
+                        if (yych <= '\n')
+                        {
+                            if (yych <= 0x00)
+                            {
+                                goto basic_json_parser_27;
+                            }
+                            if (yych <= 0x08)
+                            {
+                                goto basic_json_parser_29;
+                            }
+                            if (yych >= '\n')
+                            {
+                                goto basic_json_parser_4;
+                            }
+                        }
+                        else
+                        {
+                            if (yych == '\r')
+                            {
+                                goto basic_json_parser_2;
+                            }
+                            if (yych <= 0x1F)
+                            {
+                                goto basic_json_parser_29;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (yych <= ',')
+                        {
+                            if (yych == '"')
+                            {
+                                goto basic_json_parser_26;
+                            }
+                            if (yych <= '+')
+                            {
+                                goto basic_json_parser_29;
+                            }
+                            goto basic_json_parser_14;
+                        }
+                        else
+                        {
+                            if (yych <= '-')
+                            {
+                                goto basic_json_parser_22;
+                            }
+                            if (yych <= '/')
+                            {
+                                goto basic_json_parser_29;
+                            }
+                            if (yych <= '0')
+                            {
+                                goto basic_json_parser_23;
+                            }
+                            goto basic_json_parser_25;
+                        }
+                    }
                 }
-            }
-        } else {
-            if (yych <= 'm') {
-                if (yych <= '\\') {
-                    if (yych <= ':') goto basic_json_parser_16;
-                    if (yych == '[') goto basic_json_parser_6;
-                    goto basic_json_parser_29;
-                } else {
-                    if (yych <= ']') goto basic_json_parser_8;
-                    if (yych == 'f') goto basic_json_parser_21;
-                    goto basic_json_parser_29;
+                else
+                {
+                    if (yych <= 'm')
+                    {
+                        if (yych <= '\\')
+                        {
+                            if (yych <= ':')
+                            {
+                                goto basic_json_parser_16;
+                            }
+                            if (yych == '[')
+                            {
+                                goto basic_json_parser_6;
+                            }
+                            goto basic_json_parser_29;
+                        }
+                        else
+                        {
+                            if (yych <= ']')
+                            {
+                                goto basic_json_parser_8;
+                            }
+                            if (yych == 'f')
+                            {
+                                goto basic_json_parser_21;
+                            }
+                            goto basic_json_parser_29;
+                        }
+                    }
+                    else
+                    {
+                        if (yych <= 'z')
+                        {
+                            if (yych <= 'n')
+                            {
+                                goto basic_json_parser_18;
+                            }
+                            if (yych == 't')
+                            {
+                                goto basic_json_parser_20;
+                            }
+                            goto basic_json_parser_29;
+                        }
+                        else
+                        {
+                            if (yych <= '{')
+                            {
+                                goto basic_json_parser_10;
+                            }
+                            if (yych == '}')
+                            {
+                                goto basic_json_parser_12;
+                            }
+                            goto basic_json_parser_29;
+                        }
+                    }
                 }
-            } else {
-                if (yych <= 'z') {
-                    if (yych <= 'n') goto basic_json_parser_18;
-                    if (yych == 't') goto basic_json_parser_20;
-                    goto basic_json_parser_29;
-                } else {
-                    if (yych <= '{') goto basic_json_parser_10;
-                    if (yych == '}') goto basic_json_parser_12;
-                    goto basic_json_parser_29;
-                }
-            }
-        }
 basic_json_parser_2:
-        ++m_cursor;
-        yych = *m_cursor;
-        goto basic_json_parser_5;
+                ++m_cursor;
+                yych = *m_cursor;
+                goto basic_json_parser_5;
 basic_json_parser_3:
-        { return scan(); }
+                {
+                    return scan();
+                }
 basic_json_parser_4:
-        ++m_cursor;
-        if (m_limit <= m_cursor) { yyfill(); };
-        yych = *m_cursor;
+                ++m_cursor;
+                if (m_limit <= m_cursor)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
 basic_json_parser_5:
-        if (yybm[0+yych] & 32) {
-            goto basic_json_parser_4;
-        }
-        goto basic_json_parser_3;
+                if (yybm[0 + yych] & 32)
+                {
+                    goto basic_json_parser_4;
+                }
+                goto basic_json_parser_3;
 basic_json_parser_6:
-        ++m_cursor;
-        { return token_type::begin_array; }
+                ++m_cursor;
+                {
+                    return token_type::begin_array;
+                }
 basic_json_parser_8:
-        ++m_cursor;
-        { return token_type::end_array; }
+                ++m_cursor;
+                {
+                    return token_type::end_array;
+                }
 basic_json_parser_10:
-        ++m_cursor;
-        { return token_type::begin_object; }
+                ++m_cursor;
+                {
+                    return token_type::begin_object;
+                }
 basic_json_parser_12:
-        ++m_cursor;
-        { return token_type::end_object; }
+                ++m_cursor;
+                {
+                    return token_type::end_object;
+                }
 basic_json_parser_14:
-        ++m_cursor;
-        { return token_type::value_separator; }
+                ++m_cursor;
+                {
+                    return token_type::value_separator;
+                }
 basic_json_parser_16:
-        ++m_cursor;
-        { return token_type::name_separator; }
+                ++m_cursor;
+                {
+                    return token_type::name_separator;
+                }
 basic_json_parser_18:
-        yyaccept = 0;
-        yych = *(m_marker = ++m_cursor);
-        if (yych == 'u') goto basic_json_parser_59;
+                yyaccept = 0;
+                yych = *(m_marker = ++m_cursor);
+                if (yych == 'u')
+                {
+                    goto basic_json_parser_59;
+                }
 basic_json_parser_19:
-        { return token_type::parse_error; }
+                {
+                    return token_type::parse_error;
+                }
 basic_json_parser_20:
-        yyaccept = 0;
-        yych = *(m_marker = ++m_cursor);
-        if (yych == 'r') goto basic_json_parser_55;
-        goto basic_json_parser_19;
+                yyaccept = 0;
+                yych = *(m_marker = ++m_cursor);
+                if (yych == 'r')
+                {
+                    goto basic_json_parser_55;
+                }
+                goto basic_json_parser_19;
 basic_json_parser_21:
-        yyaccept = 0;
-        yych = *(m_marker = ++m_cursor);
-        if (yych == 'a') goto basic_json_parser_50;
-        goto basic_json_parser_19;
+                yyaccept = 0;
+                yych = *(m_marker = ++m_cursor);
+                if (yych == 'a')
+                {
+                    goto basic_json_parser_50;
+                }
+                goto basic_json_parser_19;
 basic_json_parser_22:
-        yych = *++m_cursor;
-        if (yych <= '/') goto basic_json_parser_19;
-        if (yych <= '0') goto basic_json_parser_49;
-        if (yych <= '9') goto basic_json_parser_40;
-        goto basic_json_parser_19;
+                yych = *++m_cursor;
+                if (yych <= '/')
+                {
+                    goto basic_json_parser_19;
+                }
+                if (yych <= '0')
+                {
+                    goto basic_json_parser_49;
+                }
+                if (yych <= '9')
+                {
+                    goto basic_json_parser_40;
+                }
+                goto basic_json_parser_19;
 basic_json_parser_23:
-        yyaccept = 1;
-        yych = *(m_marker = ++m_cursor);
-        if (yych <= 'D') {
-            if (yych == '.') goto basic_json_parser_42;
-        } else {
-            if (yych <= 'E') goto basic_json_parser_43;
-            if (yych == 'e') goto basic_json_parser_43;
-        }
+                yyaccept = 1;
+                yych = *(m_marker = ++m_cursor);
+                if (yych <= 'D')
+                {
+                    if (yych == '.')
+                    {
+                        goto basic_json_parser_42;
+                    }
+                }
+                else
+                {
+                    if (yych <= 'E')
+                    {
+                        goto basic_json_parser_43;
+                    }
+                    if (yych == 'e')
+                    {
+                        goto basic_json_parser_43;
+                    }
+                }
 basic_json_parser_24:
-        { return token_type::value_number; }
+                {
+                    return token_type::value_number;
+                }
 basic_json_parser_25:
-        yyaccept = 1;
-        yych = *(m_marker = ++m_cursor);
-        goto basic_json_parser_41;
+                yyaccept = 1;
+                yych = *(m_marker = ++m_cursor);
+                goto basic_json_parser_41;
 basic_json_parser_26:
-        yyaccept = 0;
-        yych = *(m_marker = ++m_cursor);
-        if (yych <= 0x00) goto basic_json_parser_19;
-        goto basic_json_parser_31;
+                yyaccept = 0;
+                yych = *(m_marker = ++m_cursor);
+                if (yych <= 0x0F)
+                {
+                    goto basic_json_parser_19;
+                }
+                goto basic_json_parser_31;
 basic_json_parser_27:
-        ++m_cursor;
-        { return token_type::end_of_input; }
+                ++m_cursor;
+                {
+                    return token_type::end_of_input;
+                }
 basic_json_parser_29:
-        yych = *++m_cursor;
-        goto basic_json_parser_19;
+                yych = *++m_cursor;
+                goto basic_json_parser_19;
 basic_json_parser_30:
-        ++m_cursor;
-        if (m_limit <= m_cursor) { yyfill(); };
-        yych = *m_cursor;
+                ++m_cursor;
+                if (m_limit <= m_cursor)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
 basic_json_parser_31:
-        if (yybm[0+yych] & 64) {
-            goto basic_json_parser_30;
-        }
-        if (yych <= 0x00) goto basic_json_parser_32;
-        if (yych <= '"') goto basic_json_parser_34;
-        goto basic_json_parser_33;
-basic_json_parser_32:
-        m_cursor = m_marker;
-        if (yyaccept == 0) {
-            goto basic_json_parser_19;
-        } else {
-            goto basic_json_parser_24;
-        }
-basic_json_parser_33:
-        ++m_cursor;
-        if (m_limit <= m_cursor) { yyfill(); };
-        yych = *m_cursor;
-        if (yych <= 'e') {
-            if (yych <= '/') {
-                if (yych == '"') goto basic_json_parser_30;
-                if (yych <= '.') goto basic_json_parser_32;
-                goto basic_json_parser_30;
-            } else {
-                if (yych <= '\\') {
-                    if (yych <= '[') goto basic_json_parser_32;
+                if (yybm[0 + yych] & 64)
+                {
                     goto basic_json_parser_30;
-                } else {
-                    if (yych == 'b') goto basic_json_parser_30;
+                }
+                if (yych <= 0x0F)
+                {
                     goto basic_json_parser_32;
                 }
-            }
-        } else {
-            if (yych <= 'q') {
-                if (yych <= 'f') goto basic_json_parser_30;
-                if (yych == 'n') goto basic_json_parser_30;
-                goto basic_json_parser_32;
-            } else {
-                if (yych <= 's') {
-                    if (yych <= 'r') goto basic_json_parser_30;
-                    goto basic_json_parser_32;
-                } else {
-                    if (yych <= 't') goto basic_json_parser_30;
-                    if (yych <= 'u') goto basic_json_parser_36;
-                    goto basic_json_parser_32;
+                if (yych <= '"')
+                {
+                    goto basic_json_parser_34;
                 }
-            }
-        }
+                goto basic_json_parser_33;
+basic_json_parser_32:
+                m_cursor = m_marker;
+                if (yyaccept == 0)
+                {
+                    goto basic_json_parser_19;
+                }
+                else
+                {
+                    goto basic_json_parser_24;
+                }
+basic_json_parser_33:
+                ++m_cursor;
+                if (m_limit <= m_cursor)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
+                if (yych <= 'e')
+                {
+                    if (yych <= '/')
+                    {
+                        if (yych == '"')
+                        {
+                            goto basic_json_parser_30;
+                        }
+                        if (yych <= '.')
+                        {
+                            goto basic_json_parser_32;
+                        }
+                        goto basic_json_parser_30;
+                    }
+                    else
+                    {
+                        if (yych <= '\\')
+                        {
+                            if (yych <= '[')
+                            {
+                                goto basic_json_parser_32;
+                            }
+                            goto basic_json_parser_30;
+                        }
+                        else
+                        {
+                            if (yych == 'b')
+                            {
+                                goto basic_json_parser_30;
+                            }
+                            goto basic_json_parser_32;
+                        }
+                    }
+                }
+                else
+                {
+                    if (yych <= 'q')
+                    {
+                        if (yych <= 'f')
+                        {
+                            goto basic_json_parser_30;
+                        }
+                        if (yych == 'n')
+                        {
+                            goto basic_json_parser_30;
+                        }
+                        goto basic_json_parser_32;
+                    }
+                    else
+                    {
+                        if (yych <= 's')
+                        {
+                            if (yych <= 'r')
+                            {
+                                goto basic_json_parser_30;
+                            }
+                            goto basic_json_parser_32;
+                        }
+                        else
+                        {
+                            if (yych <= 't')
+                            {
+                                goto basic_json_parser_30;
+                            }
+                            if (yych <= 'u')
+                            {
+                                goto basic_json_parser_36;
+                            }
+                            goto basic_json_parser_32;
+                        }
+                    }
+                }
 basic_json_parser_34:
-        ++m_cursor;
-        { return token_type::value_string; }
+                ++m_cursor;
+                {
+                    return token_type::value_string;
+                }
 basic_json_parser_36:
-        ++m_cursor;
-        if (m_limit <= m_cursor) { yyfill(); };
-        yych = *m_cursor;
-        if (yych <= '@') {
-            if (yych <= '/') goto basic_json_parser_32;
-            if (yych >= ':') goto basic_json_parser_32;
-        } else {
-            if (yych <= 'F') goto basic_json_parser_37;
-            if (yych <= '`') goto basic_json_parser_32;
-            if (yych >= 'g') goto basic_json_parser_32;
-        }
+                ++m_cursor;
+                if (m_limit <= m_cursor)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
+                if (yych <= '@')
+                {
+                    if (yych <= '/')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych >= ':')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                }
+                else
+                {
+                    if (yych <= 'F')
+                    {
+                        goto basic_json_parser_37;
+                    }
+                    if (yych <= '`')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych >= 'g')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                }
 basic_json_parser_37:
-        ++m_cursor;
-        if (m_limit <= m_cursor) { yyfill(); };
-        yych = *m_cursor;
-        if (yych <= '@') {
-            if (yych <= '/') goto basic_json_parser_32;
-            if (yych >= ':') goto basic_json_parser_32;
-        } else {
-            if (yych <= 'F') goto basic_json_parser_38;
-            if (yych <= '`') goto basic_json_parser_32;
-            if (yych >= 'g') goto basic_json_parser_32;
-        }
+                ++m_cursor;
+                if (m_limit <= m_cursor)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
+                if (yych <= '@')
+                {
+                    if (yych <= '/')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych >= ':')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                }
+                else
+                {
+                    if (yych <= 'F')
+                    {
+                        goto basic_json_parser_38;
+                    }
+                    if (yych <= '`')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych >= 'g')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                }
 basic_json_parser_38:
-        ++m_cursor;
-        if (m_limit <= m_cursor) { yyfill(); };
-        yych = *m_cursor;
-        if (yych <= '@') {
-            if (yych <= '/') goto basic_json_parser_32;
-            if (yych >= ':') goto basic_json_parser_32;
-        } else {
-            if (yych <= 'F') goto basic_json_parser_39;
-            if (yych <= '`') goto basic_json_parser_32;
-            if (yych >= 'g') goto basic_json_parser_32;
-        }
+                ++m_cursor;
+                if (m_limit <= m_cursor)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
+                if (yych <= '@')
+                {
+                    if (yych <= '/')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych >= ':')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                }
+                else
+                {
+                    if (yych <= 'F')
+                    {
+                        goto basic_json_parser_39;
+                    }
+                    if (yych <= '`')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych >= 'g')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                }
 basic_json_parser_39:
-        ++m_cursor;
-        if (m_limit <= m_cursor) { yyfill(); };
-        yych = *m_cursor;
-        if (yych <= '@') {
-            if (yych <= '/') goto basic_json_parser_32;
-            if (yych <= '9') goto basic_json_parser_30;
-            goto basic_json_parser_32;
-        } else {
-            if (yych <= 'F') goto basic_json_parser_30;
-            if (yych <= '`') goto basic_json_parser_32;
-            if (yych <= 'f') goto basic_json_parser_30;
-            goto basic_json_parser_32;
-        }
+                ++m_cursor;
+                if (m_limit <= m_cursor)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
+                if (yych <= '@')
+                {
+                    if (yych <= '/')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych <= '9')
+                    {
+                        goto basic_json_parser_30;
+                    }
+                    goto basic_json_parser_32;
+                }
+                else
+                {
+                    if (yych <= 'F')
+                    {
+                        goto basic_json_parser_30;
+                    }
+                    if (yych <= '`')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych <= 'f')
+                    {
+                        goto basic_json_parser_30;
+                    }
+                    goto basic_json_parser_32;
+                }
 basic_json_parser_40:
-        yyaccept = 1;
-        m_marker = ++m_cursor;
-        if ((m_limit - m_cursor) < 3) { yyfill(); };
-        yych = *m_cursor;
+                yyaccept = 1;
+                m_marker = ++m_cursor;
+                if ((m_limit - m_cursor) < 3)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
 basic_json_parser_41:
-        if (yybm[0+yych] & 128) {
-            goto basic_json_parser_40;
-        }
-        if (yych <= 'D') {
-            if (yych != '.') goto basic_json_parser_24;
-        } else {
-            if (yych <= 'E') goto basic_json_parser_43;
-            if (yych == 'e') goto basic_json_parser_43;
-            goto basic_json_parser_24;
-        }
+                if (yybm[0 + yych] & 128)
+                {
+                    goto basic_json_parser_40;
+                }
+                if (yych <= 'D')
+                {
+                    if (yych != '.')
+                    {
+                        goto basic_json_parser_24;
+                    }
+                }
+                else
+                {
+                    if (yych <= 'E')
+                    {
+                        goto basic_json_parser_43;
+                    }
+                    if (yych == 'e')
+                    {
+                        goto basic_json_parser_43;
+                    }
+                    goto basic_json_parser_24;
+                }
 basic_json_parser_42:
-        yych = *++m_cursor;
-        if (yych <= '/') goto basic_json_parser_32;
-        if (yych <= '9') goto basic_json_parser_47;
-        goto basic_json_parser_32;
+                yych = *++m_cursor;
+                if (yych <= '/')
+                {
+                    goto basic_json_parser_32;
+                }
+                if (yych <= '9')
+                {
+                    goto basic_json_parser_47;
+                }
+                goto basic_json_parser_32;
 basic_json_parser_43:
-        yych = *++m_cursor;
-        if (yych <= ',') {
-            if (yych != '+') goto basic_json_parser_32;
-        } else {
-            if (yych <= '-') goto basic_json_parser_44;
-            if (yych <= '/') goto basic_json_parser_32;
-            if (yych <= '9') goto basic_json_parser_45;
-            goto basic_json_parser_32;
-        }
+                yych = *++m_cursor;
+                if (yych <= ',')
+                {
+                    if (yych != '+')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                }
+                else
+                {
+                    if (yych <= '-')
+                    {
+                        goto basic_json_parser_44;
+                    }
+                    if (yych <= '/')
+                    {
+                        goto basic_json_parser_32;
+                    }
+                    if (yych <= '9')
+                    {
+                        goto basic_json_parser_45;
+                    }
+                    goto basic_json_parser_32;
+                }
 basic_json_parser_44:
-        yych = *++m_cursor;
-        if (yych <= '/') goto basic_json_parser_32;
-        if (yych >= ':') goto basic_json_parser_32;
+                yych = *++m_cursor;
+                if (yych <= '/')
+                {
+                    goto basic_json_parser_32;
+                }
+                if (yych >= ':')
+                {
+                    goto basic_json_parser_32;
+                }
 basic_json_parser_45:
-        ++m_cursor;
-        if (m_limit <= m_cursor) { yyfill(); };
-        yych = *m_cursor;
-        if (yych <= '/') goto basic_json_parser_24;
-        if (yych <= '9') goto basic_json_parser_45;
-        goto basic_json_parser_24;
+                ++m_cursor;
+                if (m_limit <= m_cursor)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
+                if (yych <= '/')
+                {
+                    goto basic_json_parser_24;
+                }
+                if (yych <= '9')
+                {
+                    goto basic_json_parser_45;
+                }
+                goto basic_json_parser_24;
 basic_json_parser_47:
-        yyaccept = 1;
-        m_marker = ++m_cursor;
-        if ((m_limit - m_cursor) < 3) { yyfill(); };
-        yych = *m_cursor;
-        if (yych <= 'D') {
-            if (yych <= '/') goto basic_json_parser_24;
-            if (yych <= '9') goto basic_json_parser_47;
-            goto basic_json_parser_24;
-        } else {
-            if (yych <= 'E') goto basic_json_parser_43;
-            if (yych == 'e') goto basic_json_parser_43;
-            goto basic_json_parser_24;
-        }
+                yyaccept = 1;
+                m_marker = ++m_cursor;
+                if ((m_limit - m_cursor) < 3)
+                {
+                    yyfill();    // LCOV_EXCL_LINE;
+                }
+                yych = *m_cursor;
+                if (yych <= 'D')
+                {
+                    if (yych <= '/')
+                    {
+                        goto basic_json_parser_24;
+                    }
+                    if (yych <= '9')
+                    {
+                        goto basic_json_parser_47;
+                    }
+                    goto basic_json_parser_24;
+                }
+                else
+                {
+                    if (yych <= 'E')
+                    {
+                        goto basic_json_parser_43;
+                    }
+                    if (yych == 'e')
+                    {
+                        goto basic_json_parser_43;
+                    }
+                    goto basic_json_parser_24;
+                }
 basic_json_parser_49:
-        yyaccept = 1;
-        yych = *(m_marker = ++m_cursor);
-        if (yych <= 'D') {
-            if (yych == '.') goto basic_json_parser_42;
-            goto basic_json_parser_24;
-        } else {
-            if (yych <= 'E') goto basic_json_parser_43;
-            if (yych == 'e') goto basic_json_parser_43;
-            goto basic_json_parser_24;
-        }
+                yyaccept = 1;
+                yych = *(m_marker = ++m_cursor);
+                if (yych <= 'D')
+                {
+                    if (yych == '.')
+                    {
+                        goto basic_json_parser_42;
+                    }
+                    goto basic_json_parser_24;
+                }
+                else
+                {
+                    if (yych <= 'E')
+                    {
+                        goto basic_json_parser_43;
+                    }
+                    if (yych == 'e')
+                    {
+                        goto basic_json_parser_43;
+                    }
+                    goto basic_json_parser_24;
+                }
 basic_json_parser_50:
-        yych = *++m_cursor;
-        if (yych != 'l') goto basic_json_parser_32;
-        yych = *++m_cursor;
-        if (yych != 's') goto basic_json_parser_32;
-        yych = *++m_cursor;
-        if (yych != 'e') goto basic_json_parser_32;
-        ++m_cursor;
-        { return token_type::literal_false; }
+                yych = *++m_cursor;
+                if (yych != 'l')
+                {
+                    goto basic_json_parser_32;
+                }
+                yych = *++m_cursor;
+                if (yych != 's')
+                {
+                    goto basic_json_parser_32;
+                }
+                yych = *++m_cursor;
+                if (yych != 'e')
+                {
+                    goto basic_json_parser_32;
+                }
+                ++m_cursor;
+                {
+                    return token_type::literal_false;
+                }
 basic_json_parser_55:
-        yych = *++m_cursor;
-        if (yych != 'u') goto basic_json_parser_32;
-        yych = *++m_cursor;
-        if (yych != 'e') goto basic_json_parser_32;
-        ++m_cursor;
-        { return token_type::literal_true; }
+                yych = *++m_cursor;
+                if (yych != 'u')
+                {
+                    goto basic_json_parser_32;
+                }
+                yych = *++m_cursor;
+                if (yych != 'e')
+                {
+                    goto basic_json_parser_32;
+                }
+                ++m_cursor;
+                {
+                    return token_type::literal_true;
+                }
 basic_json_parser_59:
-        yych = *++m_cursor;
-        if (yych != 'l') goto basic_json_parser_32;
-        yych = *++m_cursor;
-        if (yych != 'l') goto basic_json_parser_32;
-        ++m_cursor;
-        { return token_type::literal_null; }
-    }
+                yych = *++m_cursor;
+                if (yych != 'l')
+                {
+                    goto basic_json_parser_32;
+                }
+                yych = *++m_cursor;
+                if (yych != 'l')
+                {
+                    goto basic_json_parser_32;
+                }
+                ++m_cursor;
+                {
+                    return token_type::literal_null;
+                }
+            }
 
 
         }
@@ -3995,7 +4379,7 @@ basic_json_parser_59:
             m_buffer.erase(0, static_cast<size_t>(offset_start));
             std::string line;
             std::getline(*m_stream, line);
-            m_buffer += line;
+            m_buffer += "\n" + line; // add line with newline symbol
 
             m_content = reinterpret_cast<const lexer_char_t*>(m_buffer.c_str());
             m_start  = m_content;
@@ -4187,14 +4571,14 @@ basic_json_parser_59:
     {
       public:
         /// constructor for strings
-        inline parser(const string_t& s, parser_callback_t cb = default_callback) : callback(cb), m_lexer(s)
+        inline parser(const string_t& s, parser_callback_t cb = nullptr) : callback(cb), m_lexer(s)
         {
             // read first token
             get_token();
         }
 
         /// a parser reading from an input stream
-        inline parser(std::istream& _is, parser_callback_t cb = default_callback) : callback(cb),
+        inline parser(std::istream& _is, parser_callback_t cb = nullptr) : callback(cb),
             m_lexer(&_is)
         {
             // read first token
@@ -4221,10 +4605,11 @@ basic_json_parser_59:
             {
                 case (lexer::token_type::begin_object):
                 {
-                    if (keep and (keep = callback(depth++, parse_event_t::object_start, result)))
+                    if (keep and (not callback or (keep = callback(depth++, parse_event_t::object_start, result))))
                     {
                         // explicitly set result to object to cope with {}
-                        result = basic_json(value_t::object);
+                        result.m_type = value_t::object;
+                        result.m_value = json_value(value_t::object);
                     }
 
                     // read next token
@@ -4234,12 +4619,15 @@ basic_json_parser_59:
                     if (last_token == lexer::token_type::end_object)
                     {
                         get_token();
-                        if (keep and not (keep = callback(--depth, parse_event_t::object_end, result)))
+                        if (keep and callback and not callback(--depth, parse_event_t::object_end, result))
                         {
                             result = basic_json(value_t::discarded);
                         }
                         return result;
                     }
+
+                    // no comma is expected here
+                    unexpect(lexer::token_type::value_separator);
 
                     // otherwise: parse key-value pairs
                     do
@@ -4257,7 +4645,7 @@ basic_json_parser_59:
                         bool keep_tag = false;
                         if (keep)
                         {
-                            keep_tag = callback(depth, parse_event_t::key, basic_json(key));
+                            keep_tag = callback ? callback(depth, parse_event_t::key, basic_json(key)) : true;
                         }
 
                         // parse separator (:)
@@ -4277,7 +4665,7 @@ basic_json_parser_59:
                     // closing }
                     expect(lexer::token_type::end_object);
                     get_token();
-                    if (keep and not callback(--depth, parse_event_t::object_end, result))
+                    if (keep and callback and not callback(--depth, parse_event_t::object_end, result))
                     {
                         result = basic_json(value_t::discarded);
                     }
@@ -4287,10 +4675,11 @@ basic_json_parser_59:
 
                 case (lexer::token_type::begin_array):
                 {
-                    if (keep and (keep = callback(depth++, parse_event_t::array_start, result)))
+                    if (keep and (not callback or (keep = callback(depth++, parse_event_t::array_start, result))))
                     {
                         // explicitly set result to object to cope with []
-                        result = basic_json(value_t::array);
+                        result.m_type = value_t::array;
+                        result.m_value = json_value(value_t::array);
                     }
 
                     // read next token
@@ -4300,12 +4689,15 @@ basic_json_parser_59:
                     if (last_token == lexer::token_type::end_array)
                     {
                         get_token();
-                        if (not callback(--depth, parse_event_t::array_end, result))
+                        if (callback and not callback(--depth, parse_event_t::array_end, result))
                         {
                             result = basic_json(value_t::discarded);
                         }
                         return result;
                     }
+
+                    // no comma is expected here
+                    unexpect(lexer::token_type::value_separator);
 
                     // otherwise: parse values
                     do
@@ -4328,7 +4720,7 @@ basic_json_parser_59:
                     // closing ]
                     expect(lexer::token_type::end_array);
                     get_token();
-                    if (keep and not callback(--depth, parse_event_t::array_end, result))
+                    if (keep and callback and not callback(--depth, parse_event_t::array_end, result))
                     {
                         result = basic_json(value_t::discarded);
                     }
@@ -4339,7 +4731,7 @@ basic_json_parser_59:
                 case (lexer::token_type::literal_null):
                 {
                     get_token();
-                    result = basic_json(nullptr);
+                    result.m_type = value_t::null;
                     break;
                 }
 
@@ -4354,14 +4746,16 @@ basic_json_parser_59:
                 case (lexer::token_type::literal_true):
                 {
                     get_token();
-                    result = basic_json(true);
+                    result.m_type = value_t::boolean;
+                    result.m_value = true;
                     break;
                 }
 
                 case (lexer::token_type::literal_false):
                 {
                     get_token();
-                    result = basic_json(false);
+                    result.m_type = value_t::boolean;
+                    result.m_value = false;
                     break;
                 }
 
@@ -4384,27 +4778,26 @@ basic_json_parser_59:
                     if (approx(float_val, static_cast<number_float_t>(int_val)))
                     {
                         // we basic_json not lose precision -> return int
-                        result = basic_json(int_val);
+                        result.m_type = value_t::number_integer;
+                        result.m_value = int_val;
                     }
                     else
                     {
                         // we would lose precision -> returnfloat
-                        result = basic_json(float_val);
+                        result.m_type = value_t::number_float;
+                        result.m_value = float_val;
                     }
                     break;
                 }
 
                 default:
                 {
-                    std::string error_msg = "parse error - unexpected \'";
-                    error_msg += m_lexer.get_token();
-                    error_msg += "\' (";
-                    error_msg += lexer::token_type_name(last_token) + ")";
-                    throw std::invalid_argument(error_msg);
+                    // the last token was unexpected
+                    unexpect(last_token);
                 }
             }
 
-            if (keep and not callback(depth, parse_event_t::value, result))
+            if (keep and callback and not callback(depth, parse_event_t::value, result))
             {
                 result = basic_json(value_t::discarded);
             }
@@ -4426,6 +4819,18 @@ basic_json_parser_59:
                 error_msg += m_lexer.get_token();
                 error_msg += "\' (" + lexer::token_type_name(last_token);
                 error_msg += "); expected " + lexer::token_type_name(t);
+                throw std::invalid_argument(error_msg);
+            }
+        }
+
+        inline void unexpect(typename lexer::token_type t) const
+        {
+            if (t == last_token)
+            {
+                std::string error_msg = "parse error - unexpected \'";
+                error_msg += m_lexer.get_token();
+                error_msg += "\' (";
+                error_msg += lexer::token_type_name(last_token) + ")";
                 throw std::invalid_argument(error_msg);
             }
         }
